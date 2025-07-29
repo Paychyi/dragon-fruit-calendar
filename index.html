@@ -224,6 +224,71 @@
             background: #e8f5e8;
         }
 
+        .photo-preview {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .photo-preview img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #ddd;
+        }
+
+        .record-photos {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .record-photos img {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #4caf50;
+            cursor: pointer;
+            transition: transform 0.3s ease;
+        }
+
+        .record-photos img:hover {
+            transform: scale(1.05);
+        }
+
+        .photo-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.9);
+        }
+
+        .photo-modal img {
+            display: block;
+            margin: 50px auto;
+            max-width: 90%;
+            max-height: 80%;
+            border-radius: 10px;
+        }
+
+        .photo-modal .close {
+            position: absolute;
+            top: 20px;
+            right: 35px;
+            color: #fff;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
         @media (max-width: 600px) {
             .container {
                 padding: 15px;
@@ -304,6 +369,12 @@
                     <textarea id="notes" placeholder="Number of flowers, success rate, observations..."></textarea>
                 </div>
                 
+                <div class="form-group">
+                    <label for="photos">📸 Photos (growth tracking):</label>
+                    <input type="file" id="photos" accept="image/*" multiple>
+                    <div id="photo-preview" class="photo-preview"></div>
+                </div>
+                
                 <button type="submit" class="btn">🌺 Save Pollination Record</button>
             </form>
         </div>
@@ -325,6 +396,7 @@
             generateCalendar(currentDisplayYear, currentDisplayMonth);
             displayRecords();
             setupWeatherSelection();
+            setupPhotoPreview();
             
             // Set today's date as default
             document.getElementById('date').valueAsDate = new Date();
@@ -447,29 +519,61 @@
         document.getElementById('pollination-form').addEventListener('submit', function(e) {
             e.preventDefault();
             
-            const record = {
-                id: Date.now(),
-                date: document.getElementById('date').value,
-                time: document.getElementById('time').value,
-                weather: document.getElementById('weather').value,
-                technique: document.getElementById('technique').value,
-                notes: document.getElementById('notes').value
-            };
+            const photosInput = document.getElementById('photos');
+            const photos = [];
             
-            pollinationRecords.push(record);
-            localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+            // Convert photos to base64
+            if (photosInput.files.length > 0) {
+                for (let i = 0; i < photosInput.files.length; i++) {
+                    const file = photosInput.files[i];
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        photos.push({
+                            name: file.name,
+                            data: e.target.result,
+                            size: file.size
+                        });
+                        
+                        // Save record when all photos are processed
+                        if (photos.length === photosInput.files.length) {
+                            saveRecord(photos);
+                        }
+                    };
+                    reader.readAsDataURL(file);
+                }
+            } else {
+                saveRecord([]);
+            }
             
-            // Reset form
-            this.reset();
-            document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
-            document.getElementById('date').valueAsDate = new Date();
-            document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+            function saveRecord(photoData) {
+                const record = {
+                    id: Date.now(),
+                    date: document.getElementById('date').value,
+                    time: document.getElementById('time').value,
+                    weather: document.getElementById('weather').value,
+                    technique: document.getElementById('technique').value,
+                    notes: document.getElementById('notes').value,
+                    photos: photoData
+                };
+                
+                pollinationRecords.push(record);
+                localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                
+                // Reset form
+                document.getElementById('pollination-form').reset();
+                document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
+                document.getElementById('date').valueAsDate = new Date();
+                document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+                document.getElementById('photo-preview').innerHTML = '';
+                
+                // Refresh displays
+                generateCalendar(currentDisplayYear, currentDisplayMonth);
+                displayRecords();
+                
+                alert('Pollination record saved! 🌺');
+            }
             
-            // Refresh displays
-            generateCalendar(currentDisplayYear, currentDisplayMonth);
-            displayRecords();
-            
-            alert('Pollination record saved! 🌺');
+            // This code is now handled in the saveRecord function above
         });
 
         // Display records
@@ -498,14 +602,23 @@
                     'cool': '❄️'
                 };
                 
+                const photosHtml = record.photos && record.photos.length > 0 ? 
+                    `<div class="record-photos">
+                        ${record.photos.map((photo, index) => 
+                            `<img src="${photo.data}" alt="${photo.name}" onclick="openPhotoModal('${photo.data}', '${photo.name}')" title="${photo.name}">`
+                        ).join('')}
+                    </div>` : '';
+                
                 recordElement.innerHTML = `
                     <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
                     <div class="record-date">${new Date(record.date).toLocaleDateString()} at ${record.time}</div>
                     <div class="record-details">
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
                         <strong>Technique:</strong> ${record.technique}<br>
-                        ${record.notes ? `<strong>Notes:</strong> ${record.notes}` : ''}
+                        ${record.notes ? `<strong>Notes:</strong> ${record.notes}<br>` : ''}
+                        ${record.photos && record.photos.length > 0 ? `<strong>Photos:</strong> ${record.photos.length} image(s)` : ''}
                     </div>
+                    ${photosHtml}
                 `;
                 
                 recordsList.appendChild(recordElement);
@@ -581,6 +694,73 @@
         if (Notification.permission === "granted") {
             scheduleNightlyReminder();
         }
+
+        // Setup photo preview
+        function setupPhotoPreview() {
+            const photosInput = document.getElementById('photos');
+            const preview = document.getElementById('photo-preview');
+            
+            photosInput.addEventListener('change', function() {
+                preview.innerHTML = '';
+                
+                if (this.files.length > 0) {
+                    Array.from(this.files).forEach(file => {
+                        if (file.type.startsWith('image/')) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                const img = document.createElement('img');
+                                img.src = e.target.result;
+                                preview.appendChild(img);
+                            };
+                            reader.readAsDataURL(file);
+                        }
+                    });
+                }
+            });
+        }
+
+        // Open photo in modal
+        function openPhotoModal(imageSrc, imageName) {
+            // Create modal if it doesn't exist
+            let modal = document.getElementById('photo-modal');
+            if (!modal) {
+                modal = document.createElement('div');
+                modal.id = 'photo-modal';
+                modal.className = 'photo-modal';
+                modal.innerHTML = `
+                    <span class="close" onclick="closePhotoModal()">&times;</span>
+                    <img id="modal-image" src="" alt="">
+                `;
+                document.body.appendChild(modal);
+            }
+            
+            const modalImg = document.getElementById('modal-image');
+            modalImg.src = imageSrc;
+            modalImg.alt = imageName;
+            modal.style.display = 'block';
+            
+            // Close modal when clicking outside the image
+            modal.onclick = function(event) {
+                if (event.target === modal) {
+                    closePhotoModal();
+                }
+            };
+        }
+
+        // Close photo modal
+        function closePhotoModal() {
+            const modal = document.getElementById('photo-modal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Close modal with Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closePhotoModal();
+            }
+        });
     </script>
 </body>
 </html>
