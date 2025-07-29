@@ -839,24 +839,51 @@
             
             const photosInput = document.getElementById('photos');
             const photos = [];
+            let photosProcessed = 0;
+            const totalPhotos = photosInput.files.length;
             
             // Convert photos to base64
-            if (photosInput.files.length > 0) {
-                for (let i = 0; i < photosInput.files.length; i++) {
+            if (totalPhotos > 0) {
+                for (let i = 0; i < totalPhotos; i++) {
                     const file = photosInput.files[i];
+                    
+                    // Check file size (limit to 5MB to prevent localStorage issues)
+                    if (file.size > 5 * 1024 * 1024) {
+                        alert(`Photo "${file.name}" is too large (max 5MB). Please choose a smaller image.`);
+                        photosProcessed++;
+                        if (photosProcessed === totalPhotos) {
+                            saveRecord(photos);
+                        }
+                        continue;
+                    }
+                    
                     const reader = new FileReader();
+                    
                     reader.onload = function(e) {
                         photos.push({
                             name: file.name,
                             data: e.target.result,
                             size: file.size
                         });
+                        photosProcessed++;
                         
-                        // Save record when all photos are processed
-                        if (photos.length === photosInput.files.length) {
+                        // Save record when all photos are processed (success or error)
+                        if (photosProcessed === totalPhotos) {
                             saveRecord(photos);
                         }
                     };
+                    
+                    reader.onerror = function(error) {
+                        console.error('Error reading file:', file.name, error);
+                        alert(`Error reading photo "${file.name}". Continuing without this image.`);
+                        photosProcessed++;
+                        
+                        // Save record even if some photos failed
+                        if (photosProcessed === totalPhotos) {
+                            saveRecord(photos);
+                        }
+                    };
+                    
                     reader.readAsDataURL(file);
                 }
             } else {
@@ -864,15 +891,22 @@
             }
             
             function saveRecord(photoData) {
-                const recordData = {
-                    title: document.getElementById('title').value,
-                    date: document.getElementById('date').value,
-                    time: document.getElementById('time').value,
-                    weather: document.getElementById('weather').value,
-                    technique: document.getElementById('technique').value,
-                    notes: document.getElementById('notes').value,
-                    photos: photoData
-                };
+                try {
+                    const recordData = {
+                        title: document.getElementById('title').value,
+                        date: document.getElementById('date').value,
+                        time: document.getElementById('time').value,
+                        weather: document.getElementById('weather').value,
+                        technique: document.getElementById('technique').value,
+                        notes: document.getElementById('notes').value,
+                        photos: photoData || []
+                    };
+                    
+                    // Validate required fields
+                    if (!recordData.title || !recordData.date || !recordData.time || !recordData.weather || !recordData.technique) {
+                        alert('Please fill in all required fields.');
+                        return;
+                    }
                 
                 if (editingRecordId) {
                     // Update existing record
@@ -891,23 +925,29 @@
                         id: Date.now(),
                         ...recordData
                     };
-                    pollinationRecords.push(record);
+                        pollinationRecords.push(record);
                 }
                 
-                localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
-                
-                // Reset form
-                document.getElementById('pollination-form').reset();
-                document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
-                document.getElementById('date').valueAsDate = new Date();
-                document.getElementById('time').value = new Date().toTimeString().slice(0,5);
-                document.getElementById('photo-preview').innerHTML = '';
-                
-                // Refresh displays
-                generateCalendar(currentDisplayYear, currentDisplayMonth);
-                displayRecords();
-                
-                alert('Pollination record saved! 🌺');
+                    localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                    
+                    // Reset form
+                    document.getElementById('pollination-form').reset();
+                    document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
+                    document.getElementById('date').valueAsDate = new Date();
+                    document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+                    document.getElementById('photo-preview').innerHTML = '';
+                    
+                    // Refresh displays
+                    generateCalendar(currentDisplayYear, currentDisplayMonth);
+                    displayRecords();
+                    
+                    const message = editingRecordId ? 'Record updated successfully! 💾' : 'Pollination record saved! 🌺';
+                    alert(message);
+                    
+                } catch (error) {
+                    console.error('Error saving record:', error);
+                    alert('Error saving record. This might be due to storage limits or large photos. Try with smaller images.');
+                }
             }
             
             // This code is now handled in the saveRecord function above
