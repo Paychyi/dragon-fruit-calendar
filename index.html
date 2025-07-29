@@ -176,6 +176,42 @@
         .calendar-day.has-record {
             background: #c8e6c9;
             border-color: #4caf50;
+            font-size: 12px;
+            line-height: 1.2;
+            padding: 2px;
+        }
+
+        .calendar-day-content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            justify-content: flex-start;
+            align-items: center;
+        }
+
+        .calendar-day-number {
+            font-weight: bold;
+            margin-bottom: 2px;
+        }
+
+        .calendar-day-titles {
+            font-size: 10px;
+            text-align: center;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        .calendar-day-title {
+            background: rgba(76, 175, 80, 0.8);
+            color: white;
+            border-radius: 3px;
+            padding: 1px 3px;
+            margin: 1px 0;
+            display: block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 9px;
         }
 
         .calendar-day.selected {
@@ -360,6 +396,11 @@
             <h2 class="section-title">📝 Log Pollination</h2>
             <form id="pollination-form">
                 <div class="form-group">
+                    <label for="title">Record Title:</label>
+                    <input type="text" id="title" placeholder="e.g., First bloom of season, Flower 3 pollinated, etc." required>
+                </div>
+                
+                <div class="form-group">
                     <label for="date">Date:</label>
                     <input type="date" id="date" required>
                 </div>
@@ -496,15 +537,50 @@
             for (let i = 0; i < 42; i++) {
                 const dayElement = document.createElement('div');
                 dayElement.className = 'calendar-day';
-                dayElement.textContent = currentDate.getDate();
                 
                 const dateString = currentDate.toISOString().split('T')[0];
                 
-                // Check if this date has records
-                const hasRecord = pollinationRecords.some(record => record.date === dateString);
+                // Get records for this date
+                const dayRecords = pollinationRecords.filter(record => record.date === dateString);
+                const hasRecord = dayRecords.length > 0;
+                
+                // Create day content
+                const dayContent = document.createElement('div');
+                dayContent.className = 'calendar-day-content';
+                
+                const dayNumber = document.createElement('div');
+                dayNumber.className = 'calendar-day-number';
+                dayNumber.textContent = currentDate.getDate();
+                dayContent.appendChild(dayNumber);
+                
                 if (hasRecord) {
                     dayElement.classList.add('has-record');
+                    
+                    const titlesContainer = document.createElement('div');
+                    titlesContainer.className = 'calendar-day-titles';
+                    
+                    // Show up to 3 titles, then "..." if more
+                    const displayTitles = dayRecords.slice(0, 3);
+                    displayTitles.forEach(record => {
+                        const titleElement = document.createElement('span');
+                        titleElement.className = 'calendar-day-title';
+                        titleElement.textContent = record.title || 'Pollination';
+                        titleElement.title = record.title; // Full title on hover
+                        titlesContainer.appendChild(titleElement);
+                    });
+                    
+                    if (dayRecords.length > 3) {
+                        const moreElement = document.createElement('span');
+                        moreElement.className = 'calendar-day-title';
+                        moreElement.textContent = `+${dayRecords.length - 3} more`;
+                        moreElement.style.background = '#757575';
+                        titlesContainer.appendChild(moreElement);
+                    }
+                    
+                    dayContent.appendChild(titlesContainer);
                 }
+                
+                dayElement.appendChild(dayContent);
                 
                 // Highlight current month
                 if (currentDate.getMonth() !== month) {
@@ -582,6 +658,7 @@
             function saveRecord(photoData) {
                 const record = {
                     id: Date.now(),
+                    title: document.getElementById('title').value,
                     date: document.getElementById('date').value,
                     time: document.getElementById('time').value,
                     weather: document.getElementById('weather').value,
@@ -645,7 +722,10 @@
                 
                 recordElement.innerHTML = `
                     ${!isReadOnlyMode ? `<button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>` : ''}
-                    <div class="record-date">${new Date(record.date).toLocaleDateString()} at ${record.time}</div>
+                    <div class="record-date">
+                        <strong style="color: #4caf50; font-size: 16px;">${record.title || 'Pollination Record'}</strong><br>
+                        ${new Date(record.date).toLocaleDateString()} at ${record.time}
+                    </div>
                     <div class="record-details">
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
                         <strong>Technique:</strong> ${record.technique}<br>
