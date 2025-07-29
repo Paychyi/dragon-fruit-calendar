@@ -70,6 +70,56 @@
             display: none !important;
         }
 
+        .edit-btn {
+            background: #ff9800;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-right: 5px;
+        }
+
+        .edit-btn:hover {
+            background: #f57c00;
+        }
+
+        .form-edit-mode {
+            border: 3px solid #ff9800;
+            background: #fff3e0;
+        }
+
+        .edit-mode-banner {
+            background: #ff9800;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+            margin: -20px -20px 20px -20px;
+        }
+
+        .form-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .cancel-btn {
+            background: #757575;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .cancel-btn:hover {
+            background: #616161;
+        }
+
         .btn {
             background: #4caf50;
             color: white;
@@ -446,7 +496,10 @@
                     <div id="photo-preview" class="photo-preview"></div>
                 </div>
                 
-                <button type="submit" class="btn">🌺 Save Pollination Record</button>
+                <div class="form-buttons">
+                    <button type="submit" class="btn" id="submit-btn">🌺 Save Pollination Record</button>
+                    <button type="button" class="btn cancel-btn" id="cancel-btn" onclick="cancelEdit()" style="display: none;">Cancel Edit</button>
+                </div>
             </form>
         </div>
 
@@ -462,6 +515,7 @@
         let currentDisplayMonth = new Date().getMonth();
         let currentDisplayYear = new Date().getFullYear();
         let isReadOnlyMode = false;
+        let editingRecordId = null;
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
@@ -656,8 +710,7 @@
             }
             
             function saveRecord(photoData) {
-                const record = {
-                    id: Date.now(),
+                const recordData = {
                     title: document.getElementById('title').value,
                     date: document.getElementById('date').value,
                     time: document.getElementById('time').value,
@@ -667,7 +720,26 @@
                     photos: photoData
                 };
                 
-                pollinationRecords.push(record);
+                if (editingRecordId) {
+                    // Update existing record
+                    const recordIndex = pollinationRecords.findIndex(r => r.id === editingRecordId);
+                    if (recordIndex !== -1) {
+                        pollinationRecords[recordIndex] = {
+                            ...pollinationRecords[recordIndex],
+                            ...recordData
+                        };
+                    }
+                    editingRecordId = null;
+                    resetFormToCreateMode();
+                } else {
+                    // Create new record
+                    const record = {
+                        id: Date.now(),
+                        ...recordData
+                    };
+                    pollinationRecords.push(record);
+                }
+                
                 localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
                 
                 // Reset form
@@ -721,7 +793,10 @@
                     </div>` : '';
                 
                 recordElement.innerHTML = `
-                    ${!isReadOnlyMode ? `<button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>` : ''}
+                    ${!isReadOnlyMode ? `
+                        <button class="edit-btn" onclick="editRecord(${record.id})">Edit</button>
+                        <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
+                    ` : ''}
                     <div class="record-date">
                         <strong style="color: #4caf50; font-size: 16px;">${record.title || 'Pollination Record'}</strong><br>
                         ${new Date(record.date).toLocaleDateString()} at ${record.time}
@@ -953,6 +1028,101 @@
                 document.execCommand('copy');
                 alert('Share link copied to clipboard! 📋');
             }
+        }
+
+        // Edit record functionality
+        function editRecord(recordId) {
+            const record = pollinationRecords.find(r => r.id === recordId);
+            if (!record) return;
+            
+            editingRecordId = recordId;
+            
+            // Populate form with existing data
+            document.getElementById('title').value = record.title || '';
+            document.getElementById('date').value = record.date;
+            document.getElementById('time').value = record.time;
+            document.getElementById('weather').value = record.weather;
+            document.getElementById('technique').value = record.technique;
+            document.getElementById('notes').value = record.notes || '';
+            
+            // Set weather option as selected
+            document.querySelectorAll('.weather-option').forEach(opt => {
+                opt.classList.remove('selected');
+                if (opt.dataset.weather === record.weather) {
+                    opt.classList.add('selected');
+                }
+            });
+            
+            // Handle existing photos
+            const photoPreview = document.getElementById('photo-preview');
+            photoPreview.innerHTML = '';
+            if (record.photos && record.photos.length > 0) {
+                record.photos.forEach(photo => {
+                    const img = document.createElement('img');
+                    img.src = photo.data;
+                    img.title = photo.name + ' (existing)';
+                    photoPreview.appendChild(img);
+                });
+            }
+            
+            // Switch to edit mode
+            setFormToEditMode();
+            
+            // Scroll to form
+            document.querySelector('.log-section').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function setFormToEditMode() {
+            const logSection = document.querySelector('.log-section');
+            const form = document.getElementById('pollination-form');
+            const submitBtn = document.getElementById('submit-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            
+            // Add edit mode styling
+            form.classList.add('form-edit-mode');
+            
+            // Add edit banner
+            if (!document.querySelector('.edit-mode-banner')) {
+                const banner = document.createElement('div');
+                banner.className = 'edit-mode-banner';
+                banner.textContent = '✏️ Edit Mode - Updating existing record';
+                form.insertBefore(banner, form.firstChild);
+            }
+            
+            // Update button text and show cancel
+            submitBtn.textContent = '💾 Update Record';
+            cancelBtn.style.display = 'inline-block';
+        }
+
+        function resetFormToCreateMode() {
+            const form = document.getElementById('pollination-form');
+            const submitBtn = document.getElementById('submit-btn');
+            const cancelBtn = document.getElementById('cancel-btn');
+            const banner = document.querySelector('.edit-mode-banner');
+            
+            // Remove edit mode styling
+            form.classList.remove('form-edit-mode');
+            
+            // Remove edit banner
+            if (banner) {
+                banner.remove();
+            }
+            
+            // Reset button text and hide cancel
+            submitBtn.textContent = '🌺 Save Pollination Record';
+            cancelBtn.style.display = 'none';
+        }
+
+        function cancelEdit() {
+            editingRecordId = null;
+            resetFormToCreateMode();
+            
+            // Reset form
+            document.getElementById('pollination-form').reset();
+            document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
+            document.getElementById('date').valueAsDate = new Date();
+            document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+            document.getElementById('photo-preview').innerHTML = '';
         }
     </script>
 </body>
