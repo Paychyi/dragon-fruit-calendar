@@ -525,6 +525,18 @@
             return `${year}-${month}-${day}`;
         }
 
+        // Helper function to parse date string as local date without timezone shifts
+        function parseLocalDate(dateString) {
+            const [year, month, day] = dateString.split('-').map(Number);
+            return new Date(year, month - 1, day); // month is 0-indexed
+        }
+
+        // Helper function to format date consistently 
+        function formatLocalDate(dateString) {
+            const date = parseLocalDate(dateString);
+            return date.toLocaleDateString();
+        }
+
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
             checkForSharedData();
@@ -778,7 +790,13 @@
             }
             
             // Sort records by date (newest first)
-            const sortedRecords = pollinationRecords.sort((a, b) => new Date(b.date + ' ' + b.time) - new Date(a.date + ' ' + a.time));
+            const sortedRecords = pollinationRecords.sort((a, b) => {
+                const dateA = parseLocalDate(a.date);
+                const dateB = parseLocalDate(b.date);
+                dateA.setHours(...a.time.split(':').map(Number), 0, 0);
+                dateB.setHours(...b.time.split(':').map(Number), 0, 0);
+                return dateB - dateA;
+            });
             
             sortedRecords.forEach(record => {
                 const recordElement = document.createElement('div');
@@ -807,7 +825,7 @@
                     ` : ''}
                     <div class="record-date">
                         <strong style="color: #4caf50; font-size: 16px;">${record.title || 'Pollination Record'}</strong><br>
-                        ${new Date(record.date).toLocaleDateString()} at ${record.time}
+                        ${formatLocalDate(record.date)} at ${record.time}
                     </div>
                     <div class="record-details">
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
