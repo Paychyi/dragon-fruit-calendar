@@ -41,13 +41,33 @@
             margin-bottom: 10px;
         }
 
-        .notification-setup {
+        .notification-setup, .share-section {
             background: #e3f2fd;
             border: 1px solid #90caf9;
             border-radius: 10px;
             padding: 15px;
             margin-bottom: 20px;
             text-align: center;
+        }
+
+        .share-section {
+            background: #f3e5f5;
+            border-color: #ce93d8;
+        }
+
+        .read-only-banner {
+            background: #fff3e0;
+            border: 2px solid #ff9800;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+            color: #e65100;
+        }
+
+        .hidden {
+            display: none !important;
         }
 
         .btn {
@@ -321,6 +341,16 @@
             <button class="btn btn-secondary" onclick="testNotification()">Test Notification</button>
         </div>
 
+        <div class="share-section" id="share-section">
+            <p><strong>🔗 Share Calendar</strong></p>
+            <p>Create a read-only link to share your dragon fruit progress with friends</p>
+            <button class="btn" onclick="generateShareLink()">Generate Share Link</button>
+            <div id="share-result" style="display: none; margin-top: 10px;">
+                <input type="text" id="share-url" readonly style="width: 100%; margin-bottom: 10px;">
+                <button class="btn btn-secondary" onclick="copyShareLink()">Copy Link</button>
+            </div>
+        </div>
+
         <div class="calendar-section">
             <h2 class="section-title">📅 Calendar View</h2>
             <div id="calendar-container"></div>
@@ -390,17 +420,21 @@
         let selectedDate = null;
         let currentDisplayMonth = new Date().getMonth();
         let currentDisplayYear = new Date().getFullYear();
+        let isReadOnlyMode = false;
 
         // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
+            checkForSharedData();
             generateCalendar(currentDisplayYear, currentDisplayMonth);
             displayRecords();
-            setupWeatherSelection();
-            setupPhotoPreview();
-            
-            // Set today's date as default
-            document.getElementById('date').valueAsDate = new Date();
-            document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+            if (!isReadOnlyMode) {
+                setupWeatherSelection();
+                setupPhotoPreview();
+                
+                // Set today's date as default
+                document.getElementById('date').valueAsDate = new Date();
+                document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+            }
         });
 
         // Generate calendar
@@ -610,7 +644,7 @@
                     </div>` : '';
                 
                 recordElement.innerHTML = `
-                    <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
+                    ${!isReadOnlyMode ? `<button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>` : ''}
                     <div class="record-date">${new Date(record.date).toLocaleDateString()} at ${record.time}</div>
                     <div class="record-details">
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
@@ -761,6 +795,85 @@
                 closePhotoModal();
             }
         });
+
+        // Check for shared data in URL
+        function checkForSharedData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedData = urlParams.get('shared');
+            
+            if (sharedData) {
+                try {
+                    // Decode and decompress the shared data
+                    const decodedData = atob(sharedData);
+                    const sharedRecords = JSON.parse(decodedData);
+                    
+                    // Use shared data instead of local storage
+                    pollinationRecords = sharedRecords;
+                    isReadOnlyMode = true;
+                    
+                    // Hide edit functionality
+                    document.getElementById('share-section').classList.add('hidden');
+                    document.querySelector('.log-section').classList.add('hidden');
+                    
+                    // Add read-only banner
+                    const banner = document.createElement('div');
+                    banner.className = 'read-only-banner';
+                    banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. You cannot make changes.';
+                    document.querySelector('.container').insertBefore(banner, document.querySelector('.calendar-section'));
+                    
+                } catch (error) {
+                    console.error('Error loading shared data:', error);
+                    alert('Error loading shared calendar data');
+                }
+            }
+        }
+
+        // Generate shareable link
+        function generateShareLink() {
+            if (pollinationRecords.length === 0) {
+                alert('No records to share! Add some pollination data first.');
+                return;
+            }
+            
+            try {
+                // Create a copy without sensitive data if needed
+                const shareableData = pollinationRecords.map(record => ({
+                    ...record,
+                    // Keep all data for now, but this is where you could filter sensitive info
+                }));
+                
+                // Encode the data
+                const jsonData = JSON.stringify(shareableData);
+                const encodedData = btoa(jsonData);
+                
+                // Generate the shareable URL
+                const baseUrl = window.location.origin + window.location.pathname;
+                const shareUrl = `${baseUrl}?shared=${encodedData}`;
+                
+                // Display the URL
+                document.getElementById('share-url').value = shareUrl;
+                document.getElementById('share-result').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error generating share link:', error);
+                alert('Error generating share link. Your data might be too large.');
+            }
+        }
+
+        // Copy share link to clipboard
+        async function copyShareLink() {
+            const shareUrl = document.getElementById('share-url');
+            
+            try {
+                await navigator.clipboard.writeText(shareUrl.value);
+                alert('Share link copied to clipboard! 📋');
+            } catch (error) {
+                // Fallback for older browsers
+                shareUrl.select();
+                document.execCommand('copy');
+                alert('Share link copied to clipboard! 📋');
+            }
+        }
     </script>
 </body>
 </html>
