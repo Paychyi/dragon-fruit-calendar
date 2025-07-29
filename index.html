@@ -332,6 +332,7 @@
         // Generate calendar
         function generateCalendar() {
             const container = document.getElementById('calendar-container');
+            container.innerHTML = ''; // Clear existing calendar
             const now = new Date();
             const year = now.getFullYear();
             const month = now.getMonth();
