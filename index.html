@@ -222,7 +222,7 @@
             position: relative;
             background: white;
             transition: all 0.3s ease;
-            min-height: 60px;
+            min-height: 70px;
             overflow: hidden;
         }
 
@@ -255,29 +255,30 @@
         }
 
         .calendar-day-titles {
-            font-size: 9px;
+            font-size: 11px;
             text-align: center;
             overflow: hidden;
             width: 100%;
             flex: 1;
             display: flex;
             flex-direction: column;
-            gap: 1px;
+            gap: 2px;
         }
 
         .calendar-day-title {
             background: rgba(76, 175, 80, 0.8);
             color: white;
-            border-radius: 2px;
-            padding: 1px 2px;
-            margin: 0;
+            border-radius: 3px;
+            padding: 2px 4px;
+            margin: 1px 0;
             display: block;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            font-size: 8px;
-            line-height: 1.1;
+            font-size: 11px;
+            line-height: 1.2;
             max-width: 100%;
+            font-weight: 500;
         }
 
         .calendar-day.selected {
@@ -449,9 +450,9 @@
             }
             
             .calendar-day-title {
-                font-size: 8px;
-                padding: 0px 2px;
-                margin: 0px;
+                font-size: 10px;
+                padding: 1px 3px;
+                margin: 1px 0;
             }
             
             .calendar-header {
@@ -509,7 +510,7 @@
             
             /* Larger touch targets for mobile */
             .calendar-day {
-                min-height: 50px;
+                min-height: 55px;
             }
             
             /* Better mobile calendar navigation */
@@ -526,7 +527,7 @@
             }
             
             .calendar-day {
-                min-height: 40px;
+                min-height: 45px;
                 font-size: 10px;
             }
             
@@ -535,7 +536,8 @@
             }
             
             .calendar-day-title {
-                font-size: 7px;
+                font-size: 9px;
+                padding: 1px 2px;
             }
             
             .weather-option {
