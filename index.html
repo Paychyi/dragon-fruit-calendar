@@ -676,11 +676,20 @@
         let editingRecordId = null;
         
         // Cloudflare Images configuration
+        // Cloudflare configuration - Users need to set up their own account
         const CLOUDFLARE_CONFIG = {
-            accountId: '33eed0c9b165bc55ab5f9e93bd3c9f6c',
-            apiToken: '6yMEiKfcvEomzhUHO3N3Xh68d95wP60l1KwDzdmG',
-            uploadUrl: 'https://api.cloudflare.com/client/v4/accounts/33eed0c9b165bc55ab5f9e93bd3c9f6c/images/v1'
+            accountId: 'YOUR_ACCOUNT_ID', // Replace with your Cloudflare account ID
+            apiToken: 'YOUR_API_TOKEN',   // Replace with your Cloudflare Images API token
+            uploadUrl: 'https://api.cloudflare.com/client/v4/accounts/YOUR_ACCOUNT_ID/images/v1'
         };
+        
+        // Check if Cloudflare is properly configured
+        function isCloudflareConfigured() {
+            return CLOUDFLARE_CONFIG.accountId !== 'YOUR_ACCOUNT_ID' && 
+                   CLOUDFLARE_CONFIG.apiToken !== 'YOUR_API_TOKEN' &&
+                   CLOUDFLARE_CONFIG.accountId && 
+                   CLOUDFLARE_CONFIG.apiToken;
+        }
 
         // Helper function to get local date string (YYYY-MM-DD) without timezone issues
         function getLocalDateString(date) {
@@ -704,11 +713,19 @@
 
         // Upload image to Cloudflare Images
         async function uploadToCloudflare(file) {
+            // Check if Cloudflare is configured
+            if (!isCloudflareConfigured()) {
+                throw new Error('Cloudflare Images is not configured. Please set up your account ID and API token.');
+            }
+            
             try {
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                const response = await fetch(CLOUDFLARE_CONFIG.uploadUrl, {
+                // Update the URL with the actual account ID
+                const uploadUrl = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_CONFIG.accountId}/images/v1`;
+                
+                const response = await fetch(uploadUrl, {
                     method: 'POST',
                     headers: {
                         'Authorization': `Bearer ${CLOUDFLARE_CONFIG.apiToken}`
@@ -717,22 +734,31 @@
                 });
                 
                 if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(`Upload failed: ${errorData.errors?.[0]?.message || response.statusText}`);
+                    let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+                    try {
+                        const errorData = await response.json();
+                        if (errorData.errors && errorData.errors.length > 0) {
+                            errorMessage = errorData.errors[0].message;
+                        }
+                    } catch (e) {
+                        // If we can't parse JSON, use the status text
+                    }
+                    throw new Error(`Cloudflare upload failed: ${errorMessage}`);
                 }
                 
                 const result = await response.json();
                 
                 if (!result.success) {
-                    throw new Error(`Cloudflare error: ${result.errors?.[0]?.message || 'Unknown error'}`);
+                    const errorMessage = result.errors?.[0]?.message || 'Unknown Cloudflare error';
+                    throw new Error(`Cloudflare error: ${errorMessage}`);
                 }
                 
                 // Return the image data with Cloudflare URLs
                 return {
                     id: result.result.id,
                     name: file.name,
-                    url: result.result.variants[0], // Default variant URL
-                    thumbnailUrl: result.result.variants[0] + '/w=200,h=200', // Thumbnail
+                    url: result.result.variants?.[0] || result.result.url, // Use first variant or fallback
+                    thumbnailUrl: (result.result.variants?.[0] || result.result.url) + '/w=200,h=200', // Thumbnail
                     size: file.size,
                     uploadedAt: new Date().toISOString(),
                     source: 'cloudflare'
@@ -1720,6 +1746,181 @@
             }
         }
 
+        // Setup weather selection functionality
+        function setupWeatherSelection() {
+            // Weather selection is handled by the HTML select element
+            // No additional JavaScript needed for basic functionality
+        }
+        
+        // Setup photo preview functionality  
+        function setupPhotoPreview() {
+            const photoInput = document.getElementById('photos');
+            const previewContainer = document.getElementById('photo-preview');
+            
+            photoInput.addEventListener('change', function(event) {
+                previewContainer.innerHTML = '';
+                const files = Array.from(event.target.files);
+                
+                files.forEach((file, index) => {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            const preview = document.createElement('div');
+                            preview.className = 'photo-preview-item';
+                            preview.innerHTML = `
+                                <img src="${e.target.result}" alt="Preview ${index + 1}">
+                                <p>${file.name}</p>
+                            `;
+                            previewContainer.appendChild(preview);
+                        };
+                        reader.readAsDataURL(file);
+                    }
+                });
+            });
+        }
+        
+        // Form submission handler
+        function setupFormSubmission() {
+            const form = document.getElementById('pollination-form');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            form.addEventListener('submit', async function(event) {
+                event.preventDefault();
+                
+                const formData = new FormData(form);
+                const photoFiles = document.getElementById('photos').files;
+                
+                // Disable submit button during processing
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Processing...';
+                
+                try {
+                    // Create progress message
+                    const progressContainer = document.createElement('div');
+                    progressContainer.id = 'upload-progress';
+                    progressContainer.style.cssText = 'margin: 10px 0; padding: 10px; background: #e3f2fd; border-radius: 5px; font-weight: bold;';
+                    form.appendChild(progressContainer);
+                    
+                    const progressMsg = progressContainer;
+                    progressMsg.textContent = 'Processing photos...';
+                    
+                    // Process photos
+                    const photos = [];
+                    let photosProcessed = 0;
+                    const totalPhotos = photoFiles.length;
+                    
+                    for (let i = 0; i < photoFiles.length; i++) {
+                        const file = photoFiles[i];
+                        
+                        if (!file.type.startsWith('image/')) {
+                            console.warn('Skipping non-image file:', file.name);
+                            photosProcessed++;
+                            continue;
+                        }
+                        
+                        progressMsg.textContent = `Uploading photos... ${photosProcessed + 1}/${totalPhotos}`;
+                        
+                        try {
+                            // Try Cloudflare first, fallback to base64
+                            if (isCloudflareConfigured()) {
+                                const cloudflarePhoto = await uploadToCloudflare(file);
+                                photos.push(cloudflarePhoto);
+                                console.log('Uploaded to Cloudflare:', file.name);
+                            } else {
+                                // Fallback to base64 storage
+                                const base64Photo = await processPhotoAsBase64(file);
+                                photos.push(base64Photo);
+                                console.log('Stored as base64:', file.name);
+                            }
+                        } catch (error) {
+                            console.error('Photo upload failed:', error);
+                            // Continue with next photo, don't fail the entire form
+                            alert(`Failed to upload ${file.name}: ${error.message}`);
+                        }
+                        
+                        photosProcessed++;
+                        progressMsg.textContent = `Uploading photos... ${photosProcessed}/${totalPhotos}`;
+                    }
+                    
+                    // Create record
+                    const record = {
+                        id: editingRecordId || Date.now().toString(),
+                        title: formData.get('title') || 'Dragon Fruit Pollination',
+                        date: formData.get('date'),
+                        time: formData.get('time'),
+                        weather: formData.get('weather'),
+                        technique: formData.get('technique'),
+                        notes: formData.get('notes'),
+                        photos: photos
+                    };
+                    
+                    // Save record
+                    if (editingRecordId) {
+                        const index = pollinationRecords.findIndex(r => r.id === editingRecordId);
+                        if (index !== -1) {
+                            pollinationRecords[index] = record;
+                        }
+                        editingRecordId = null;
+                    } else {
+                        pollinationRecords.push(record);
+                    }
+                    
+                    // Save to localStorage
+                    localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                    
+                    // Update display
+                    generateCalendar(currentDisplayYear, currentDisplayMonth);
+                    displayRecords();
+                    
+                    // Reset form
+                    form.reset();
+                    document.getElementById('photo-preview').innerHTML = '';
+                    
+                    // Remove progress message
+                    progressContainer.remove();
+                    
+                    // Show success message
+                    const successMsg = photos.length > 0 ? 
+                        `Pollination record saved with ${photos.length} photo(s)!` : 
+                        'Pollination record saved!';
+                    alert(successMsg);
+                    
+                } catch (error) {
+                    console.error('Form submission error:', error);
+                    alert('Error saving record: ' + error.message);
+                } finally {
+                    // Re-enable submit button
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '🌺 Save Pollination Record';
+                    
+                    // Remove progress message if still present
+                    const progressEl = document.getElementById('upload-progress');
+                    if (progressEl) progressEl.remove();
+                }
+            });
+        }
+        
+        // Process photo as base64 (fallback when Cloudflare not configured)
+        function processPhotoAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    resolve({
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                        name: file.name,
+                        data: e.target.result,
+                        size: file.size,
+                        uploadedAt: new Date().toISOString(),
+                        source: 'base64'
+                    });
+                };
+                reader.onerror = function() {
+                    reject(new Error('Failed to read file: ' + file.name));
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
         // Update initialization to check for mobile data
         document.addEventListener('DOMContentLoaded', function() {
             checkForSharedData();
@@ -1729,6 +1930,7 @@
             if (!isReadOnlyMode) {
                 setupWeatherSelection();
                 setupPhotoPreview();
+                setupFormSubmission(); // Add form submission setup
                 
                 // Set today's date as default
                 document.getElementById('date').valueAsDate = new Date();
