@@ -1121,7 +1121,7 @@
                     (record.photoCount > 0 ? 
                         `<div class="record-photos">
                             <div style="background: #f0f0f0; border: 2px dashed #ccc; border-radius: 8px; padding: 20px; text-align: center; color: #666;">
-                                📸 ${record.photoCount} photo${record.photoCount > 1 ? 's' : ''} (not included in shared link)
+                                📸 ${record.photoCount} older photo${record.photoCount > 1 ? 's' : ''} (base64 format, not included in shared link)
                             </div>
                         </div>` : '');
                 
@@ -1139,7 +1139,7 @@
                         <strong>Technique:</strong> ${record.technique}<br>
                         ${record.notes ? `<strong>Notes:</strong> ${record.notes}<br>` : ''}
                         ${record.photos && record.photos.length > 0 ? `<strong>Photos:</strong> ${record.photos.length} image(s)` : 
-                          (record.photoCount > 0 ? `<strong>Photos:</strong> ${record.photoCount} image(s) (not shown in shared view)` : '')}
+                          (record.photoCount > 0 ? `<strong>Photos:</strong> ${record.photoCount} older image(s) (not included in shared view)` : '')}
                     </div>
                     ${photosHtml}
                 `;
@@ -1332,7 +1332,7 @@
                     // Add read-only banner
                     const banner = document.createElement('div');
                     banner.className = 'read-only-banner';
-                    banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. Photos not included to keep links small.';
+                    banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. Cloudflare photos are viewable, older photos may be excluded.';
                     document.querySelector('.container').insertBefore(banner, document.querySelector('.calendar-section'));
                     
                     console.log('Successfully loaded shared calendar with', pollinationRecords.length, 'records');
@@ -1346,7 +1346,7 @@
 
         // Helper function to compress data
         function compressShareData(data) {
-            // Remove photos and compress field names to save space
+            // Include Cloudflare photo URLs (they're small) but exclude base64 data
             return data.map(record => ([
                 record.id,
                 record.title || '',
@@ -1355,23 +1355,44 @@
                 record.weather,
                 record.technique,
                 record.notes || '',
-                (record.photos && record.photos.length > 0) ? record.photos.length : 0 // Just photo count, not actual photos
+                record.photos ? record.photos.map(photo => {
+                    // Include Cloudflare photos (URLs), exclude base64 photos
+                    if (photo.source === 'cloudflare' && photo.url) {
+                        return {
+                            id: photo.id,
+                            name: photo.name,
+                            url: photo.url,
+                            thumbnailUrl: photo.thumbnailUrl,
+                            source: 'cloudflare'
+                        };
+                    } else if (photo.data && photo.data.startsWith('data:')) {
+                        // Convert base64 to photo count for old photos
+                        return { name: photo.name, size: photo.size, type: 'base64-excluded' };
+                    }
+                    return photo; // Keep other formats as-is
+                }).filter(Boolean) : []
             ]));
         }
         
         // Helper function to decompress data
         function decompressShareData(compressedData) {
-            return compressedData.map(record => ({
-                id: record[0],
-                title: record[1],
-                date: record[2],
-                time: record[3],
-                weather: record[4],
-                technique: record[5],
-                notes: record[6],
-                photoCount: record[7] || 0,
-                photos: [] // Photos not included in shared links to keep size small
-            }));
+            return compressedData.map(record => {
+                const photos = Array.isArray(record[7]) ? record[7] : [];
+                const cloudflarePhotos = photos.filter(photo => photo.source === 'cloudflare');
+                const excludedPhotos = photos.filter(photo => photo.type === 'base64-excluded');
+                
+                return {
+                    id: record[0],
+                    title: record[1],
+                    date: record[2],
+                    time: record[3],
+                    weather: record[4],
+                    technique: record[5],
+                    notes: record[6],
+                    photos: cloudflarePhotos,
+                    photoCount: excludedPhotos.length // Count of excluded base64 photos
+                };
+            });
         }
 
         // Generate shareable link
@@ -1407,9 +1428,20 @@
                 document.getElementById('share-result').style.display = 'block';
                 
                 // Show info about photos
-                const photoCount = pollinationRecords.reduce((sum, record) => sum + (record.photos?.length || 0), 0);
-                if (photoCount > 0) {
-                    alert(`Share link created! Note: Photos are not included in shared links to keep them small and functional. Your ${photoCount} photo(s) will show as placeholder text.`);
+                const allPhotos = pollinationRecords.reduce((sum, record) => sum + (record.photos?.length || 0), 0);
+                const cloudflarePhotos = pollinationRecords.reduce((sum, record) => 
+                    sum + (record.photos?.filter(p => p.source === 'cloudflare').length || 0), 0);
+                const base64Photos = allPhotos - cloudflarePhotos;
+                
+                if (allPhotos > 0) {
+                    let message = 'Share link created! ';
+                    if (cloudflarePhotos > 0) {
+                        message += `${cloudflarePhotos} Cloudflare photo(s) included and viewable. `;
+                    }
+                    if (base64Photos > 0) {
+                        message += `${base64Photos} older photo(s) excluded (upload to Cloudflare to include them).`;
+                    }
+                    alert(message);
                 }
                 
             } catch (error) {
