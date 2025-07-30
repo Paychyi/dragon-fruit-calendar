@@ -1051,7 +1051,13 @@
                         ${record.photos.map((photo, index) => 
                             `<img src="${photo.data}" alt="${photo.name}" onclick="openPhotoModal('${photo.data}', '${photo.name}')" title="${photo.name}">`
                         ).join('')}
-                    </div>` : '';
+                    </div>` : 
+                    (record.photoCount > 0 ? 
+                        `<div class="record-photos">
+                            <div style="background: #f0f0f0; border: 2px dashed #ccc; border-radius: 8px; padding: 20px; text-align: center; color: #666;">
+                                📸 ${record.photoCount} photo${record.photoCount > 1 ? 's' : ''} (not included in shared link)
+                            </div>
+                        </div>` : '');
                 
                 recordElement.innerHTML = `
                     ${!isReadOnlyMode ? `
@@ -1066,7 +1072,8 @@
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
                         <strong>Technique:</strong> ${record.technique}<br>
                         ${record.notes ? `<strong>Notes:</strong> ${record.notes}<br>` : ''}
-                        ${record.photos && record.photos.length > 0 ? `<strong>Photos:</strong> ${record.photos.length} image(s)` : ''}
+                        ${record.photos && record.photos.length > 0 ? `<strong>Photos:</strong> ${record.photos.length} image(s)` : 
+                          (record.photoCount > 0 ? `<strong>Photos:</strong> ${record.photoCount} image(s) (not shown in shared view)` : '')}
                     </div>
                     ${photosHtml}
                 `;
@@ -1223,29 +1230,32 @@
                 try {
                     // Decode and parse the shared data
                     const decodedData = atob(sharedData);
-                    const sharedRecords = JSON.parse(decodedData);
+                    const rawData = JSON.parse(decodedData);
                     
-                    console.log('Loaded shared data:', sharedRecords.length, 'records');
+                    console.log('Loaded shared data:', rawData.length, 'records');
                     
-                    // Validate the shared data structure
-                    if (!Array.isArray(sharedRecords)) {
-                        throw new Error('Invalid shared data format');
+                    // Check if this is compressed format (array of arrays) or old format
+                    let sharedRecords;
+                    if (Array.isArray(rawData) && rawData.length > 0 && Array.isArray(rawData[0])) {
+                        // New compressed format
+                        sharedRecords = decompressShareData(rawData);
+                    } else {
+                        // Old format - handle as before
+                        sharedRecords = rawData.map(record => ({
+                            id: record.id || Date.now() + Math.random(),
+                            title: record.title || '',
+                            date: record.date,
+                            time: record.time,
+                            weather: record.weather,
+                            technique: record.technique,
+                            notes: record.notes || '',
+                            photos: record.photos || [],
+                            photoCount: (record.photos && record.photos.length) || 0
+                        }));
                     }
                     
-                    // Ensure all records have required fields with fallbacks
-                    const validatedRecords = sharedRecords.map(record => ({
-                        id: record.id || Date.now() + Math.random(),
-                        title: record.title || '',
-                        date: record.date,
-                        time: record.time,
-                        weather: record.weather,
-                        technique: record.technique,
-                        notes: record.notes || '',
-                        photos: record.photos || []
-                    }));
-                    
                     // Use shared data instead of local storage
-                    pollinationRecords = validatedRecords;
+                    pollinationRecords = sharedRecords;
                     isReadOnlyMode = true;
                     
                     // Hide edit functionality
@@ -1255,16 +1265,46 @@
                     // Add read-only banner
                     const banner = document.createElement('div');
                     banner.className = 'read-only-banner';
-                    banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. You cannot make changes.';
+                    banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. Photos not included to keep links small.';
                     document.querySelector('.container').insertBefore(banner, document.querySelector('.calendar-section'));
                     
                     console.log('Successfully loaded shared calendar with', pollinationRecords.length, 'records');
                     
                 } catch (error) {
                     console.error('Error loading shared data:', error);
-                    alert('Error loading shared calendar data. The link may be corrupted or too large.');
+                    alert('Error loading shared calendar data. The link may be corrupted.');
                 }
             }
+        }
+
+        // Helper function to compress data
+        function compressShareData(data) {
+            // Remove photos and compress field names to save space
+            return data.map(record => ([
+                record.id,
+                record.title || '',
+                record.date,
+                record.time,
+                record.weather,
+                record.technique,
+                record.notes || '',
+                (record.photos && record.photos.length > 0) ? record.photos.length : 0 // Just photo count, not actual photos
+            ]));
+        }
+        
+        // Helper function to decompress data
+        function decompressShareData(compressedData) {
+            return compressedData.map(record => ({
+                id: record[0],
+                title: record[1],
+                date: record[2],
+                time: record[3],
+                weather: record[4],
+                technique: record[5],
+                notes: record[6],
+                photoCount: record[7] || 0,
+                photos: [] // Photos not included in shared links to keep size small
+            }));
         }
 
         // Generate shareable link
@@ -1275,41 +1315,39 @@
             }
             
             try {
-                // Create a copy with all data preserved
-                const shareableData = pollinationRecords.map(record => ({
-                    id: record.id,
-                    title: record.title || '',
-                    date: record.date,
-                    time: record.time,
-                    weather: record.weather,
-                    technique: record.technique,
-                    notes: record.notes || '',
-                    photos: record.photos || []
-                }));
+                // Compress the data (remove photos, use array format)
+                const compressedData = compressShareData(pollinationRecords);
                 
                 // Encode the data
-                const jsonData = JSON.stringify(shareableData);
-                console.log('Sharing data size:', (jsonData.length / 1024).toFixed(2) + 'KB');
+                const jsonData = JSON.stringify(compressedData);
+                console.log('Compressed sharing data size:', (jsonData.length / 1024).toFixed(2) + 'KB');
                 
                 const encodedData = btoa(jsonData);
                 
-                // Check URL length (browsers have limits ~2000-8000 chars)
+                // Generate the shareable URL
                 const baseUrl = window.location.origin + window.location.pathname;
                 const shareUrl = `${baseUrl}?shared=${encodedData}`;
                 
+                console.log('Share URL length:', shareUrl.length, 'characters');
+                
                 if (shareUrl.length > 8000) {
-                    alert('Share URL is very long due to photos. Some browsers may have issues. Consider sharing fewer records or records with fewer photos.');
+                    alert('Share URL is still too long. Try sharing fewer records.');
+                    return;
                 }
                 
                 // Display the URL
                 document.getElementById('share-url').value = shareUrl;
                 document.getElementById('share-result').style.display = 'block';
                 
-                console.log('Share URL length:', shareUrl.length, 'characters');
+                // Show info about photos
+                const photoCount = pollinationRecords.reduce((sum, record) => sum + (record.photos?.length || 0), 0);
+                if (photoCount > 0) {
+                    alert(`Share link created! Note: Photos are not included in shared links to keep them small and functional. Your ${photoCount} photo(s) will show as placeholder text.`);
+                }
                 
             } catch (error) {
                 console.error('Error generating share link:', error);
-                alert('Error generating share link. Your data might be too large for URL sharing.');
+                alert('Error generating share link. Please try again.');
             }
         }
 
