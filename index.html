@@ -674,6 +674,13 @@
         let currentDisplayYear = new Date().getFullYear();
         let isReadOnlyMode = false;
         let editingRecordId = null;
+        
+        // Cloudflare Images configuration
+        const CLOUDFLARE_CONFIG = {
+            accountId: '33eed0c9b165bc55ab5f9e93bd3c9f6c',
+            apiToken: '6yMEiKfcvEomzhUHO3N3Xh68d95wP60l1KwDzdmG',
+            uploadUrl: 'https://api.cloudflare.com/client/v4/accounts/33eed0c9b165bc55ab5f9e93bd3c9f6c/images/v1'
+        };
 
         // Helper function to get local date string (YYYY-MM-DD) without timezone issues
         function getLocalDateString(date) {
@@ -695,7 +702,49 @@
             return date.toLocaleDateString();
         }
 
-        // Helper function to compress and resize images
+        // Upload image to Cloudflare Images
+        async function uploadToCloudflare(file) {
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const response = await fetch(CLOUDFLARE_CONFIG.uploadUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${CLOUDFLARE_CONFIG.apiToken}`
+                    },
+                    body: formData
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`Upload failed: ${errorData.errors?.[0]?.message || response.statusText}`);
+                }
+                
+                const result = await response.json();
+                
+                if (!result.success) {
+                    throw new Error(`Cloudflare error: ${result.errors?.[0]?.message || 'Unknown error'}`);
+                }
+                
+                // Return the image data with Cloudflare URLs
+                return {
+                    id: result.result.id,
+                    name: file.name,
+                    url: result.result.variants[0], // Default variant URL
+                    thumbnailUrl: result.result.variants[0] + '/w=200,h=200', // Thumbnail
+                    size: file.size,
+                    uploadedAt: new Date().toISOString(),
+                    source: 'cloudflare'
+                };
+                
+            } catch (error) {
+                console.error('Cloudflare upload error:', error);
+                throw error;
+            }
+        }
+
+        // Helper function to compress and resize images (fallback for local storage)
         function compressImage(file, maxWidth = 800, maxHeight = 600, quality = 0.8) {
             return new Promise((resolve, reject) => {
                 const canvas = document.createElement('canvas');
@@ -912,8 +961,14 @@
             let photosProcessed = 0;
             const totalPhotos = photosInput.files.length;
             
-            // Convert and compress photos
+            // Upload photos to Cloudflare Images
             if (totalPhotos > 0) {
+                // Show upload progress
+                const progressMsg = document.createElement('div');
+                progressMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 10000;';
+                progressMsg.textContent = 'Uploading photos to Cloudflare...';
+                document.body.appendChild(progressMsg);
+                
                 for (let i = 0; i < totalPhotos; i++) {
                     const file = photosInput.files[i];
                     
@@ -922,36 +977,35 @@
                         alert(`"${file.name}" is not an image file. Skipping.`);
                         photosProcessed++;
                         if (photosProcessed === totalPhotos) {
+                            document.body.removeChild(progressMsg);
                             saveRecord(photos);
                         }
                         continue;
                     }
                     
-                    // Check original file size (warn if very large)
-                    if (file.size > 10 * 1024 * 1024) {
-                        alert(`Photo "${file.name}" is very large (${(file.size/1024/1024).toFixed(1)}MB). It will be compressed automatically.`);
-                    }
-                    
-                    // Compress the image
-                    compressImage(file)
-                        .then(compressedPhoto => {
-                            photos.push(compressedPhoto);
+                    // Upload to Cloudflare Images
+                    uploadToCloudflare(file)
+                        .then(cloudflarePhoto => {
+                            photos.push(cloudflarePhoto);
                             photosProcessed++;
                             
-                            console.log(`Compressed "${file.name}": ${compressedPhoto.originalSize} → ${compressedPhoto.size} bytes (${compressedPhoto.compressionRatio}% reduction)`);
+                            progressMsg.textContent = `Uploading photos... ${photosProcessed}/${totalPhotos}`;
+                            console.log(`Uploaded "${file.name}" to Cloudflare:`, cloudflarePhoto.url);
                             
                             // Save record when all photos are processed
                             if (photosProcessed === totalPhotos) {
+                                document.body.removeChild(progressMsg);
                                 saveRecord(photos);
                             }
                         })
                         .catch(error => {
-                            console.error('Error compressing image:', file.name, error);
-                            alert(`Error processing photo "${file.name}". Continuing without this image.`);
+                            console.error('Error uploading to Cloudflare:', file.name, error);
+                            alert(`Error uploading photo "${file.name}" to Cloudflare: ${error.message}. Continuing without this image.`);
                             photosProcessed++;
                             
                             // Save record even if some photos failed
                             if (photosProcessed === totalPhotos) {
+                                document.body.removeChild(progressMsg);  
                                 saveRecord(photos);
                             }
                         });
@@ -1057,9 +1111,12 @@
                 
                 const photosHtml = record.photos && record.photos.length > 0 ? 
                     `<div class="record-photos">
-                        ${record.photos.map((photo, index) => 
-                            `<img src="${photo.data}" alt="${photo.name}" onclick="openPhotoModal('${photo.data}', '${photo.name}')" title="${photo.name}">`
-                        ).join('')}
+                        ${record.photos.map((photo, index) => {
+                            // Handle both Cloudflare and old base64 photos
+                            const imageUrl = photo.url || photo.data; // Cloudflare URL or base64 data
+                            const thumbnailUrl = photo.thumbnailUrl || photo.url || photo.data;
+                            return `<img src="${thumbnailUrl}" alt="${photo.name}" onclick="openPhotoModal('${imageUrl}', '${photo.name}')" title="${photo.name}">`;
+                        }).join('')}
                     </div>` : 
                     (record.photoCount > 0 ? 
                         `<div class="record-photos">
@@ -1405,7 +1462,7 @@
             if (record.photos && record.photos.length > 0) {
                 record.photos.forEach(photo => {
                     const img = document.createElement('img');
-                    img.src = photo.data;
+                    img.src = photo.thumbnailUrl || photo.url || photo.data; // Support both Cloudflare and base64
                     img.title = photo.name + ' (existing)';
                     photoPreview.appendChild(img);
                 });
