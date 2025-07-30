@@ -833,7 +833,7 @@
                     displayTitles.forEach(record => {
                         const titleElement = document.createElement('span');
                         titleElement.className = 'calendar-day-title';
-                        titleElement.textContent = record.title || 'Pollination';
+                        titleElement.textContent = record.title || `Record ${dayRecords.indexOf(record) + 1}`;
                         titleElement.title = record.title; // Full title on hover
                         titlesContainer.appendChild(titleElement);
                     });
@@ -1059,7 +1059,7 @@
                         <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
                     ` : ''}
                     <div class="record-date">
-                        <strong style="color: #4caf50; font-size: 16px;">${record.title || 'Pollination Record'}</strong><br>
+                        <strong style="color: #4caf50; font-size: 16px;">${record.title || `Pollination Record (${formatLocalDate(record.date)})`}</strong><br>
                         ${formatLocalDate(record.date)} at ${record.time}
                     </div>
                     <div class="record-details">
@@ -1221,12 +1221,31 @@
             
             if (sharedData) {
                 try {
-                    // Decode and decompress the shared data
+                    // Decode and parse the shared data
                     const decodedData = atob(sharedData);
                     const sharedRecords = JSON.parse(decodedData);
                     
+                    console.log('Loaded shared data:', sharedRecords.length, 'records');
+                    
+                    // Validate the shared data structure
+                    if (!Array.isArray(sharedRecords)) {
+                        throw new Error('Invalid shared data format');
+                    }
+                    
+                    // Ensure all records have required fields with fallbacks
+                    const validatedRecords = sharedRecords.map(record => ({
+                        id: record.id || Date.now() + Math.random(),
+                        title: record.title || '',
+                        date: record.date,
+                        time: record.time,
+                        weather: record.weather,
+                        technique: record.technique,
+                        notes: record.notes || '',
+                        photos: record.photos || []
+                    }));
+                    
                     // Use shared data instead of local storage
-                    pollinationRecords = sharedRecords;
+                    pollinationRecords = validatedRecords;
                     isReadOnlyMode = true;
                     
                     // Hide edit functionality
@@ -1239,9 +1258,11 @@
                     banner.innerHTML = '🔒 Read-Only View - This is a shared dragon fruit calendar. You cannot make changes.';
                     document.querySelector('.container').insertBefore(banner, document.querySelector('.calendar-section'));
                     
+                    console.log('Successfully loaded shared calendar with', pollinationRecords.length, 'records');
+                    
                 } catch (error) {
                     console.error('Error loading shared data:', error);
-                    alert('Error loading shared calendar data');
+                    alert('Error loading shared calendar data. The link may be corrupted or too large.');
                 }
             }
         }
@@ -1254,27 +1275,41 @@
             }
             
             try {
-                // Create a copy without sensitive data if needed
+                // Create a copy with all data preserved
                 const shareableData = pollinationRecords.map(record => ({
-                    ...record,
-                    // Keep all data for now, but this is where you could filter sensitive info
+                    id: record.id,
+                    title: record.title || '',
+                    date: record.date,
+                    time: record.time,
+                    weather: record.weather,
+                    technique: record.technique,
+                    notes: record.notes || '',
+                    photos: record.photos || []
                 }));
                 
                 // Encode the data
                 const jsonData = JSON.stringify(shareableData);
+                console.log('Sharing data size:', (jsonData.length / 1024).toFixed(2) + 'KB');
+                
                 const encodedData = btoa(jsonData);
                 
-                // Generate the shareable URL
+                // Check URL length (browsers have limits ~2000-8000 chars)
                 const baseUrl = window.location.origin + window.location.pathname;
                 const shareUrl = `${baseUrl}?shared=${encodedData}`;
+                
+                if (shareUrl.length > 8000) {
+                    alert('Share URL is very long due to photos. Some browsers may have issues. Consider sharing fewer records or records with fewer photos.');
+                }
                 
                 // Display the URL
                 document.getElementById('share-url').value = shareUrl;
                 document.getElementById('share-result').style.display = 'block';
                 
+                console.log('Share URL length:', shareUrl.length, 'characters');
+                
             } catch (error) {
                 console.error('Error generating share link:', error);
-                alert('Error generating share link. Your data might be too large.');
+                alert('Error generating share link. Your data might be too large for URL sharing.');
             }
         }
 
