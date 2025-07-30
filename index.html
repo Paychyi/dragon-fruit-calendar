@@ -701,14 +701,32 @@
 
         // Helper function to parse date string as local date without timezone shifts
         function parseLocalDate(dateString) {
-            const [year, month, day] = dateString.split('-').map(Number);
-            return new Date(year, month - 1, day); // month is 0-indexed
+            if (!dateString || typeof dateString !== 'string') {
+                console.error('Invalid dateString provided to parseLocalDate:', dateString);
+                return new Date(); // Return current date as fallback
+            }
+            try {
+                const [year, month, day] = dateString.split('-').map(Number);
+                return new Date(year, month - 1, day); // month is 0-indexed
+            } catch (error) {
+                console.error('Error parsing date:', dateString, error);
+                return new Date(); // Return current date as fallback
+            }
         }
 
         // Helper function to format date consistently 
         function formatLocalDate(dateString) {
-            const date = parseLocalDate(dateString);
-            return date.toLocaleDateString();
+            if (!dateString || typeof dateString !== 'string') {
+                console.error('Invalid dateString provided to formatLocalDate:', dateString);
+                return new Date().toLocaleDateString(); // Return current date formatted
+            }
+            try {
+                const date = parseLocalDate(dateString);
+                return date.toLocaleDateString();
+            } catch (error) {
+                console.error('Error formatting date:', dateString, error);
+                return new Date().toLocaleDateString(); // Return current date formatted
+            }
         }
 
         // Upload image to Cloudflare Images
@@ -719,11 +737,14 @@
             }
             
             try {
+                console.log('Starting Cloudflare upload for:', file.name);
+                
                 const formData = new FormData();
                 formData.append('file', file);
                 
                 // Update the URL with the actual account ID
                 const uploadUrl = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_CONFIG.accountId}/images/v1`;
+                console.log('Upload URL:', uploadUrl);
                 
                 const response = await fetch(uploadUrl, {
                     method: 'POST',
@@ -731,17 +752,23 @@
                         'Authorization': `Bearer ${CLOUDFLARE_CONFIG.apiToken}`
                     },
                     body: formData
+                }).catch(fetchError => {
+                    console.error('Fetch error:', fetchError);
+                    throw new Error(`Network error: ${fetchError.message}`);
                 });
+                
+                console.log('Response status:', response.status, response.statusText);
                 
                 if (!response.ok) {
                     let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                     try {
                         const errorData = await response.json();
+                        console.log('Error response data:', errorData);
                         if (errorData.errors && errorData.errors.length > 0) {
                             errorMessage = errorData.errors[0].message;
                         }
                     } catch (e) {
-                        // If we can't parse JSON, use the status text
+                        console.error('Could not parse error response:', e);
                     }
                     throw new Error(`Cloudflare upload failed: ${errorMessage}`);
                 }
@@ -1843,13 +1870,16 @@
                     }
                     
                     // Create record
+                    const dateValue = formData.get('date') || getLocalDateString(new Date());
+                    const timeValue = formData.get('time') || new Date().toTimeString().slice(0,5);
+                    
                     const record = {
                         id: editingRecordId || Date.now().toString(),
                         title: formData.get('title') || 'Dragon Fruit Pollination',
-                        date: formData.get('date'),
-                        time: formData.get('time'),
-                        weather: formData.get('weather'),
-                        technique: formData.get('technique'),
+                        date: dateValue,
+                        time: timeValue,
+                        weather: formData.get('weather') || 'Clear',
+                        technique: formData.get('technique') || 'Manual',
                         notes: formData.get('notes'),
                         photos: photos
                     };
