@@ -57,6 +57,15 @@
             border-color: #ce93d8;
         }
 
+        .sync-section {
+            background: #e8f5e8;
+            border: 1px solid #81c784;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
         .read-only-banner {
             background: #fff3e0;
             border: 2px solid #ff9800;
@@ -573,6 +582,19 @@
             </div>
         </div>
 
+        <div class="sync-section" id="sync-section">
+            <p><strong>📱 Mobile Sync</strong></p>
+            <p>Access and edit your calendar on mobile devices</p>
+            <button class="btn" onclick="generateMobileLink()">Create Mobile Edit Link</button>
+            <button class="btn btn-secondary" onclick="exportData()">Export Data</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('import-file').click()">Import Data</button>
+            <input type="file" id="import-file" accept=".json" style="display: none;" onchange="importData(event)">
+            <div id="mobile-result" style="display: none; margin-top: 10px;">
+                <input type="text" id="mobile-url" readonly style="width: 100%; margin-bottom: 10px;">
+                <button class="btn btn-secondary" onclick="copyMobileLink()">Copy Mobile Link</button>
+            </div>
+        </div>
+
         <div class="calendar-section">
             <h2 class="section-title">📅 Calendar View</h2>
             <div id="calendar-container"></div>
@@ -732,20 +754,7 @@
             });
         }
 
-        // Initialize the app
-        document.addEventListener('DOMContentLoaded', function() {
-            checkForSharedData();
-            generateCalendar(currentDisplayYear, currentDisplayMonth);
-            displayRecords();
-            if (!isReadOnlyMode) {
-                setupWeatherSelection();
-                setupPhotoPreview();
-                
-                // Set today's date as default
-                document.getElementById('date').valueAsDate = new Date();
-                document.getElementById('time').value = new Date().toTimeString().slice(0,5);
-            }
-        });
+        // Initialize the app - moved to end of file to include mobile sync
 
         // Generate calendar
         function generateCalendar(year = currentDisplayYear, month = currentDisplayMonth) {
@@ -1260,6 +1269,7 @@
                     
                     // Hide edit functionality
                     document.getElementById('share-section').classList.add('hidden');
+                    document.getElementById('sync-section').classList.add('hidden');
                     document.querySelector('.log-section').classList.add('hidden');
                     
                     // Add read-only banner
@@ -1460,6 +1470,182 @@
             document.getElementById('time').value = new Date().toTimeString().slice(0,5);
             document.getElementById('photo-preview').innerHTML = '';
         }
+
+        // Mobile sync functions
+        function generateMobileLink() {
+            if (pollinationRecords.length === 0) {
+                alert('No records to sync! Add some pollination data first.');
+                return;
+            }
+            
+            try {
+                // Include all data including photos for mobile editing
+                const mobileData = pollinationRecords.map(record => ({
+                    id: record.id,
+                    title: record.title || '',
+                    date: record.date,
+                    time: record.time,
+                    weather: record.weather,
+                    technique: record.technique,
+                    notes: record.notes || '',
+                    photos: record.photos || []
+                }));
+                
+                // Encode the data
+                const jsonData = JSON.stringify(mobileData);
+                const encodedData = btoa(jsonData);
+                
+                // Generate the mobile URL with edit parameter
+                const baseUrl = window.location.origin + window.location.pathname;
+                const mobileUrl = `${baseUrl}?mobile=${encodedData}`;
+                
+                console.log('Mobile URL length:', mobileUrl.length, 'characters');
+                
+                if (mobileUrl.length > 8000) {
+                    alert('Mobile sync URL is very long due to photos. Some browsers may have issues.');
+                }
+                
+                // Display the URL
+                document.getElementById('mobile-url').value = mobileUrl;
+                document.getElementById('mobile-result').style.display = 'block';
+                
+                alert('Mobile edit link created! This link includes all your data and photos for full editing on mobile.');
+                
+            } catch (error) {
+                console.error('Error generating mobile link:', error);
+                alert('Error generating mobile link. Your data might be too large.');
+            }
+        }
+
+        function copyMobileLink() {
+            const mobileUrl = document.getElementById('mobile-url');
+            
+            try {
+                mobileUrl.select();
+                document.execCommand('copy');
+                alert('Mobile edit link copied! Open this on your mobile device to edit your calendar.');
+            } catch (error) {
+                console.error('Error copying mobile link:', error);
+                alert('Please manually copy the link above.');
+            }
+        }
+
+        function exportData() {
+            try {
+                const dataToExport = {
+                    exportDate: new Date().toISOString(),
+                    version: '1.0',
+                    records: pollinationRecords
+                };
+                
+                const jsonData = JSON.stringify(dataToExport, null, 2);
+                const blob = new Blob([jsonData], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `dragon-fruit-calendar-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                
+                alert('Calendar data exported! You can import this file on another device.');
+                
+            } catch (error) {
+                console.error('Error exporting data:', error);
+                alert('Error exporting data.');
+            }
+        }
+
+        function importData(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const importedData = JSON.parse(e.target.result);
+                    
+                    // Validate the imported data
+                    if (!importedData.records || !Array.isArray(importedData.records)) {
+                        throw new Error('Invalid file format');
+                    }
+                    
+                    // Confirm before importing
+                    const confirmMessage = `Import ${importedData.records.length} records? This will replace your current data.`;
+                    if (confirm(confirmMessage)) {
+                        pollinationRecords = importedData.records;
+                        localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                        
+                        // Refresh displays
+                        generateCalendar(currentDisplayYear, currentDisplayMonth);
+                        displayRecords();
+                        
+                        alert('Data imported successfully!');
+                    }
+                    
+                } catch (error) {
+                    console.error('Error importing data:', error);
+                    alert('Error importing file. Please check the file format.');
+                }
+            };
+            reader.readAsText(file);
+            
+            // Reset the file input
+            event.target.value = '';
+        }
+
+        // Check for mobile data in URL
+        function checkForMobileData() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const mobileData = urlParams.get('mobile');
+            
+            if (mobileData) {
+                try {
+                    const decodedData = atob(mobileData);
+                    const mobileRecords = JSON.parse(decodedData);
+                    
+                    console.log('Loaded mobile data:', mobileRecords.length, 'records');
+                    
+                    // Use mobile data instead of local storage
+                    pollinationRecords = mobileRecords;
+                    
+                    // Add mobile banner
+                    const banner = document.createElement('div');
+                    banner.className = 'read-only-banner';
+                    banner.style.background = '#e8f5e8';
+                    banner.style.borderColor = '#4caf50';
+                    banner.innerHTML = '📱 Mobile Edit Mode - Your calendar data loaded from sync link. Changes save locally on this device.';
+                    document.querySelector('.container').insertBefore(banner, document.querySelector('.notification-setup'));
+                    
+                    // Save to local storage on this device
+                    localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                    
+                    console.log('Successfully loaded mobile calendar with', pollinationRecords.length, 'records');
+                    
+                } catch (error) {
+                    console.error('Error loading mobile data:', error);
+                    alert('Error loading mobile calendar data.');
+                }
+            }
+        }
+
+        // Update initialization to check for mobile data
+        document.addEventListener('DOMContentLoaded', function() {
+            checkForSharedData();
+            checkForMobileData(); // Add mobile data check
+            generateCalendar(currentDisplayYear, currentDisplayMonth);
+            displayRecords();
+            if (!isReadOnlyMode) {
+                setupWeatherSelection();
+                setupPhotoPreview();
+                
+                // Set today's date as default
+                document.getElementById('date').valueAsDate = new Date();
+                document.getElementById('time').value = new Date().toTimeString().slice(0,5);
+            }
+        });
     </script>
 </body>
 </html>
