@@ -733,9 +733,16 @@
         async function uploadToCloudflare(file) {
             // Check if Cloudflare is configured
             if (!isCloudflareConfigured()) {
+                console.warn('Cloudflare not configured, falling back to base64');
                 throw new Error('Cloudflare Images is not configured. Please set up your account ID and API token.');
             }
             
+            // Note: Direct client-side uploads to Cloudflare API are blocked by CORS
+            // This would require a backend proxy or Cloudflare's direct upload feature
+            console.warn('Cloudflare direct upload blocked by CORS policy. Falling back to base64 storage.');
+            throw new Error('Cloudflare direct upload not supported in browser (CORS policy). Using base64 storage instead.');
+            
+            /* This code would work with a backend proxy:
             try {
                 console.log('Starting Cloudflare upload for:', file.name);
                 
@@ -795,6 +802,7 @@
                 console.error('Cloudflare upload error:', error);
                 throw error;
             }
+            */
         }
 
         // Helper function to compress and resize images (fallback for local storage)
@@ -1142,10 +1150,16 @@
             
             // Sort records by date (newest first)
             const sortedRecords = pollinationRecords.sort((a, b) => {
-                const dateA = parseLocalDate(a.date);
-                const dateB = parseLocalDate(b.date);
-                dateA.setHours(...a.time.split(':').map(Number), 0, 0);
-                dateB.setHours(...b.time.split(':').map(Number), 0, 0);
+                const dateA = parseLocalDate(a.date || getLocalDateString(new Date()));
+                const dateB = parseLocalDate(b.date || getLocalDateString(new Date()));
+                
+                // Handle time safely with fallbacks
+                const timeA = (a.time || '00:00').split(':').map(Number);
+                const timeB = (b.time || '00:00').split(':').map(Number);
+                
+                dateA.setHours(timeA[0] || 0, timeA[1] || 0, 0, 0);
+                dateB.setHours(timeB[0] || 0, timeB[1] || 0, 0, 0);
+                
                 return dateB - dateA;
             });
             
