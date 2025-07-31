@@ -729,18 +729,20 @@
             }
         }
 
-        // Upload image to Cloudflare Images
+        // Check if Cloudflare could theoretically work (but it won't due to CORS)
+        function canAttemptCloudflare() {
+            return CLOUDFLARE_CONFIG.accountId !== 'YOUR_ACCOUNT_ID' && 
+                   CLOUDFLARE_CONFIG.apiToken !== 'YOUR_API_TOKEN' &&
+                   CLOUDFLARE_CONFIG.accountId && 
+                   CLOUDFLARE_CONFIG.apiToken;
+        }
+        
+        // Upload image to Cloudflare Images (currently disabled due to CORS)
         async function uploadToCloudflare(file) {
-            // Check if Cloudflare is configured
-            if (!isCloudflareConfigured()) {
-                console.warn('Cloudflare not configured, falling back to base64');
-                throw new Error('Cloudflare Images is not configured. Please set up your account ID and API token.');
-            }
-            
-            // Note: Direct client-side uploads to Cloudflare API are blocked by CORS
-            // This would require a backend proxy or Cloudflare's direct upload feature
-            console.warn('Cloudflare direct upload blocked by CORS policy. Falling back to base64 storage.');
-            throw new Error('Cloudflare direct upload not supported in browser (CORS policy). Using base64 storage instead.');
+            // Cloudflare direct uploads are blocked by browser CORS policy
+            // Would need a backend server to proxy the request
+            console.log('Cloudflare upload not available (CORS restriction), using compressed local storage');
+            return null; // Return null to indicate fallback needed
             
             /* This code would work with a backend proxy:
             try {
@@ -1862,21 +1864,23 @@
                         progressMsg.textContent = `Uploading photos... ${photosProcessed + 1}/${totalPhotos}`;
                         
                         try {
-                            // Try Cloudflare first, fallback to base64
-                            if (isCloudflareConfigured()) {
-                                const cloudflarePhoto = await uploadToCloudflare(file);
-                                photos.push(cloudflarePhoto);
-                                console.log('Uploaded to Cloudflare:', file.name);
-                            } else {
-                                // Fallback to base64 storage
-                                const base64Photo = await processPhotoAsBase64(file);
-                                photos.push(base64Photo);
-                                console.log('Stored as base64:', file.name);
+                            // Try Cloudflare first, but it will return null due to CORS
+                            let photo = null;
+                            if (canAttemptCloudflare()) {
+                                photo = await uploadToCloudflare(file);
                             }
+                            
+                            // If Cloudflare failed or not available, use compressed base64
+                            if (!photo) {
+                                photo = await processPhotoAsCompressedBase64(file);
+                                console.log('Stored compressed photo:', file.name);
+                            }
+                            
+                            photos.push(photo);
                         } catch (error) {
-                            console.error('Photo upload failed:', error);
+                            console.error('Photo processing failed:', error);
                             // Continue with next photo, don't fail the entire form
-                            alert(`Failed to upload ${file.name}: ${error.message}`);
+                            alert(`Failed to process ${file.name}: ${error.message}. Skipping this photo.`);
                         }
                         
                         photosProcessed++;
@@ -1909,8 +1913,23 @@
                         pollinationRecords.push(record);
                     }
                     
-                    // Save to localStorage
-                    localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
+                    // Save to localStorage with quota handling
+                    try {
+                        const dataString = JSON.stringify(pollinationRecords);
+                        const dataSizeKB = (new Blob([dataString]).size / 1024).toFixed(1);
+                        console.log(`Saving ${dataSizeKB}KB to localStorage`);
+                        
+                        localStorage.setItem('dragonFruitRecords', dataString);
+                    } catch (storageError) {
+                        if (storageError.name === 'QuotaExceededError') {
+                            console.error('localStorage quota exceeded');
+                            alert('Storage quota exceeded! Your browser storage is full. Try deleting some old records or photos to free up space.');
+                            throw new Error('Storage quota exceeded. Please delete some records to free up space.');
+                        } else {
+                            console.error('localStorage error:', storageError);
+                            throw storageError;
+                        }
+                    }
                     
                     // Update display
                     generateCalendar(currentDisplayYear, currentDisplayMonth);
@@ -1944,7 +1963,44 @@
             });
         }
         
-        // Process photo as base64 (fallback when Cloudflare not configured)
+        // Process photo as compressed base64 to save storage space
+        async function processPhotoAsCompressedBase64(file) {
+            try {
+                console.log(`Original photo size: ${(file.size / 1024).toFixed(1)}KB`);
+                
+                // Compress the image to reduce storage usage
+                const compressedFile = await compressImage(file, 600, 400, 0.6); // Smaller size, lower quality
+                
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const base64Size = (e.target.result.length * 0.75) / 1024; // Approximate base64 size in KB
+                        console.log(`Compressed photo size: ~${base64Size.toFixed(1)}KB`);
+                        
+                        resolve({
+                            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                            name: file.name,
+                            data: e.target.result,
+                            size: compressedFile.size,
+                            originalSize: file.size,
+                            uploadedAt: new Date().toISOString(),
+                            source: 'base64-compressed'
+                        });
+                    };
+                    reader.onerror = function() {
+                        reject(new Error('Failed to read compressed file: ' + file.name));
+                    };
+                    reader.readAsDataURL(compressedFile);
+                });
+                
+            } catch (error) {
+                console.error('Compression failed, using original file:', error);
+                // Fallback to original file if compression fails
+                return processPhotoAsBase64(file);
+            }
+        }
+        
+        // Process photo as base64 (uncompressed fallback)
         function processPhotoAsBase64(file) {
             return new Promise((resolve, reject) => {
                 const reader = new FileReader();
