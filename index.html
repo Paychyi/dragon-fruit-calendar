@@ -2021,10 +2021,97 @@
             });
         }
 
+        // Migrate and compress existing photos to free up storage space
+        async function migrateExistingPhotos() {
+            console.log('🔄 Checking for photos to compress...');
+            
+            const existingData = localStorage.getItem('dragonFruitRecords');
+            if (!existingData) {
+                console.log('No existing data to migrate');
+                return;
+            }
+            
+            try {
+                const records = JSON.parse(existingData);
+                let photosCompressed = 0;
+                let storageFreed = 0;
+                
+                for (const record of records) {
+                    if (record.photos && record.photos.length > 0) {
+                        for (let i = 0; i < record.photos.length; i++) {
+                            const photo = record.photos[i];
+                            
+                            // Check if this is an uncompressed base64 photo
+                            if (photo.source === 'base64' && photo.data && photo.data.startsWith('data:image/')) {
+                                console.log(`Compressing photo: ${photo.name}`);
+                                
+                                try {
+                                    // Convert base64 back to blob for compression
+                                    const response = await fetch(photo.data);
+                                    const blob = await response.blob();
+                                    const file = new File([blob], photo.name, { type: blob.type });
+                                    
+                                    // Compress the photo
+                                    const compressedPhoto = await processPhotoAsCompressedBase64(file);
+                                    
+                                    // Calculate space saved
+                                    const originalSize = photo.data.length;
+                                    const compressedSize = compressedPhoto.data.length;
+                                    const spaceSaved = originalSize - compressedSize;
+                                    storageFreed += spaceSaved;
+                                    
+                                    // Replace the photo with compressed version
+                                    record.photos[i] = {
+                                        ...compressedPhoto,
+                                        name: photo.name, // Keep original name
+                                        uploadedAt: photo.uploadedAt // Keep original upload date
+                                    };
+                                    
+                                    photosCompressed++;
+                                    console.log(`✅ Compressed ${photo.name}: saved ${(spaceSaved/1024).toFixed(1)}KB`);
+                                    
+                                } catch (compressionError) {
+                                    console.error(`Failed to compress ${photo.name}:`, compressionError);
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (photosCompressed > 0) {
+                    // Save the migrated data
+                    const migratedData = JSON.stringify(records);
+                    localStorage.setItem('dragonFruitRecords', migratedData);
+                    pollinationRecords = records; // Update in-memory data
+                    
+                    const spaceSavedMB = (storageFreed / 1024 / 1024).toFixed(1);
+                    console.log(`🎉 Migration complete! Compressed ${photosCompressed} photos, freed ${spaceSavedMB}MB of storage.`);
+                    
+                    // Show user a success message
+                    const banner = document.createElement('div');
+                    banner.style.cssText = 'background: #e8f5e8; border: 1px solid #4caf50; padding: 10px; margin: 10px 0; border-radius: 5px; color: #2e7d32; font-weight: bold; text-align: center;';
+                    banner.innerHTML = `🎉 Optimized ${photosCompressed} photos and freed ${spaceSavedMB}MB of storage space!`;
+                    document.querySelector('.container').insertBefore(banner, document.querySelector('.notification-setup'));
+                    
+                    // Remove banner after 10 seconds
+                    setTimeout(() => banner.remove(), 10000);
+                } else {
+                    console.log('No photos needed compression');
+                }
+                
+            } catch (error) {
+                console.error('Migration failed:', error);
+            }
+        }
+
         // Update initialization to check for mobile data
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', async function() {
             checkForSharedData();
             checkForMobileData(); // Add mobile data check
+            
+            // Run photo migration before loading calendar
+            await migrateExistingPhotos();
+            
             generateCalendar(currentDisplayYear, currentDisplayMonth);
             displayRecords();
             if (!isReadOnlyMode) {
