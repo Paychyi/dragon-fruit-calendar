@@ -1,0 +1,29 @@
+{
+  "name": "dragon-fruit-calendar",
+  "version": "1.0.0",
+  "description": "A mobile-friendly web app to track dragon fruit pollination schedule with photo uploads and sharing",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 8000 --bind 0.0.0.0",
+    "dev": "python -m http.server 8080 --bind 0.0.0.0",
+    "serve": "npx http-server . -p 8000 -a 0.0.0.0"
+  },
+  "keywords": [
+    "dragon-fruit",
+    "pollination",
+    "calendar",
+    "gardening",
+    "agriculture",
+    "tracking"
+  ],
+  "author": "PayChyi",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Paychyi/dragon-fruit-calendar.git"
+  },
+  "homepage": "https://paychyi.github.io/dragon-fruit-calendar",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}

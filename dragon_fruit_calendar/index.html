@@ -1102,8 +1102,8 @@
                 
                 recordElement.innerHTML = `
                     ${!isReadOnlyMode ? `
-                        <button class="edit-btn" onclick="editRecord(${record.id})">Edit</button>
-                        <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
+                        <button class="edit-btn" onclick="editRecord('${record.id}')">Edit</button>
+                        <button class="delete-btn" onclick="deleteRecord('${record.id}')">Delete</button>
                     ` : ''}
                     <div class="record-date">
                         <strong style="color: #4caf50; font-size: 16px;">${record.title || `Pollination Record`}</strong><br>
