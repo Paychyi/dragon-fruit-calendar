@@ -1015,130 +1015,7 @@
             });
         }
 
-        // Handle form submission
-        document.getElementById('pollination-form').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            const photosInput = document.getElementById('photos');
-            const photos = [];
-            let photosProcessed = 0;
-            const totalPhotos = photosInput.files.length;
-            
-            // Upload photos to Cloudflare Images
-            if (totalPhotos > 0) {
-                // Show upload progress
-                const progressMsg = document.createElement('div');
-                progressMsg.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 20px; border-radius: 10px; z-index: 10000;';
-                progressMsg.textContent = 'Uploading photos to Cloudflare...';
-                document.body.appendChild(progressMsg);
-                
-                for (let i = 0; i < totalPhotos; i++) {
-                    const file = photosInput.files[i];
-                    
-                    // Check if it's an image file
-                    if (!file.type.startsWith('image/')) {
-                        alert(`"${file.name}" is not an image file. Skipping.`);
-                        photosProcessed++;
-                        if (photosProcessed === totalPhotos) {
-                            document.body.removeChild(progressMsg);
-                            saveRecord(photos);
-                        }
-                        continue;
-                    }
-                    
-                    // Upload to Cloudflare Images
-                    uploadToCloudflare(file)
-                        .then(cloudflarePhoto => {
-                            photos.push(cloudflarePhoto);
-                            photosProcessed++;
-                            
-                            progressMsg.textContent = `Uploading photos... ${photosProcessed}/${totalPhotos}`;
-                            console.log(`Uploaded "${file.name}" to Cloudflare:`, cloudflarePhoto.url);
-                            
-                            // Save record when all photos are processed
-                            if (photosProcessed === totalPhotos) {
-                                document.body.removeChild(progressMsg);
-                                saveRecord(photos);
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Error uploading to Cloudflare:', file.name, error);
-                            alert(`Error uploading photo "${file.name}" to Cloudflare: ${error.message}. Continuing without this image.`);
-                            photosProcessed++;
-                            
-                            // Save record even if some photos failed
-                            if (photosProcessed === totalPhotos) {
-                                document.body.removeChild(progressMsg);  
-                                saveRecord(photos);
-                            }
-                        });
-                }
-            } else {
-                saveRecord([]);
-            }
-            
-            function saveRecord(photoData) {
-                try {
-                    const recordData = {
-                        title: document.getElementById('title').value,
-                        date: document.getElementById('date').value,
-                        time: document.getElementById('time').value,
-                        weather: document.getElementById('weather').value,
-                        technique: document.getElementById('technique').value,
-                        notes: document.getElementById('notes').value,
-                        photos: photoData || []
-                    };
-                    
-                    // Validate required fields
-                    if (!recordData.title || !recordData.date || !recordData.time || !recordData.weather || !recordData.technique) {
-                        alert('Please fill in all required fields.');
-                        return;
-                    }
-                
-                if (editingRecordId) {
-                    // Update existing record
-                    const recordIndex = pollinationRecords.findIndex(r => r.id === editingRecordId);
-                    if (recordIndex !== -1) {
-                        pollinationRecords[recordIndex] = {
-                            ...pollinationRecords[recordIndex],
-                            ...recordData
-                        };
-                    }
-                    editingRecordId = null;
-                    resetFormToCreateMode();
-                } else {
-                    // Create new record
-                    const record = {
-                        id: Date.now(),
-                        ...recordData
-                    };
-                        pollinationRecords.push(record);
-                }
-                
-                    localStorage.setItem('dragonFruitRecords', JSON.stringify(pollinationRecords));
-                    
-                    // Reset form
-                    document.getElementById('pollination-form').reset();
-                    document.querySelectorAll('.weather-option').forEach(opt => opt.classList.remove('selected'));
-                    document.getElementById('date').valueAsDate = new Date();
-                    document.getElementById('time').value = new Date().toTimeString().slice(0,5);
-                    document.getElementById('photo-preview').innerHTML = '';
-                    
-                    // Refresh displays
-                    generateCalendar(currentDisplayYear, currentDisplayMonth);
-                    displayRecords();
-                    
-                    const message = editingRecordId ? 'Record updated successfully! 💾' : 'Pollination record saved! 🌺';
-                    alert(message);
-                    
-                } catch (error) {
-                    console.error('Error saving record:', error);
-                    alert('Error saving record. This might be due to storage limits or large photos. Try with smaller images.');
-                }
-            }
-            
-            // This code is now handled in the saveRecord function above
-        });
+        // Form submission is now handled by setupFormSubmission() function
 
         // Display records
         function displayRecords() {
@@ -1200,8 +1077,8 @@
                         <button class="delete-btn" onclick="deleteRecord(${record.id})">Delete</button>
                     ` : ''}
                     <div class="record-date">
-                        <strong style="color: #4caf50; font-size: 16px;">${record.title || `Pollination Record (${formatLocalDate(record.date)})`}</strong><br>
-                        ${formatLocalDate(record.date)} at ${record.time}
+                        <strong style="color: #4caf50; font-size: 16px;">${record.title || `Pollination Record`}</strong><br>
+                        ${record.date ? formatLocalDate(record.date) : 'No date'} at ${record.time || 'No time'}
                     </div>
                     <div class="record-details">
                         <strong>Weather:</strong> ${weatherEmoji[record.weather] || ''} ${record.weather}<br>
