@@ -605,17 +605,17 @@
             <form id="pollination-form">
                 <div class="form-group">
                     <label for="title">Record Title:</label>
-                    <input type="text" id="title" placeholder="e.g., First bloom of season, Flower 3 pollinated, etc." required>
+                    <input type="text" id="title" name="title" placeholder="e.g., First bloom of season, Flower 3 pollinated, etc." required>
                 </div>
                 
                 <div class="form-group">
                     <label for="date">Date:</label>
-                    <input type="date" id="date" required>
+                    <input type="date" id="date" name="date" required>
                 </div>
                 
                 <div class="form-group">
                     <label for="time">Time:</label>
-                    <input type="time" id="time" required>
+                    <input type="time" id="time" name="time" required>
                 </div>
                 
                 <div class="form-group">
@@ -628,12 +628,12 @@
                         <div class="weather-option" data-weather="humid">💧 Humid</div>
                         <div class="weather-option" data-weather="cool">❄️ Cool</div>
                     </div>
-                    <input type="hidden" id="weather" required>
+                    <input type="hidden" id="weather" name="weather" required>
                 </div>
                 
                 <div class="form-group">
                     <label for="technique">Pollination Technique:</label>
-                    <select id="technique" required>
+                    <select id="technique" name="technique" required>
                         <option value="">Select technique...</option>
                         <option value="brush">Small brush</option>
                         <option value="cotton-swab">Cotton swab</option>
@@ -645,12 +645,12 @@
                 
                 <div class="form-group">
                     <label for="notes">Notes:</label>
-                    <textarea id="notes" placeholder="Number of flowers, success rate, observations..."></textarea>
+                    <textarea id="notes" name="notes" placeholder="Number of flowers, success rate, observations..."></textarea>
                 </div>
                 
                 <div class="form-group">
                     <label for="photos">📸 Photos (growth tracking):</label>
-                    <input type="file" id="photos" accept="image/*" multiple>
+                    <input type="file" id="photos" name="photos" accept="image/*" multiple>
                     <div id="photo-preview" class="photo-preview"></div>
                 </div>
                 
