@@ -1968,35 +1968,22 @@
             try {
                 console.log(`Original photo size: ${(file.size / 1024).toFixed(1)}KB`);
                 
-                // Compress the image to reduce storage usage
-                const compressedFile = await compressImage(file, 600, 400, 0.6); // Smaller size, lower quality
+                // Use built-in compression with canvas
+                const compressedData = await compressImage(file, 400, 300, 0.5); // Very aggressive compression
                 
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = function(e) {
-                        const base64Size = (e.target.result.length * 0.75) / 1024; // Approximate base64 size in KB
-                        console.log(`Compressed photo size: ~${base64Size.toFixed(1)}KB`);
-                        
-                        resolve({
-                            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-                            name: file.name,
-                            data: e.target.result,
-                            size: compressedFile.size,
-                            originalSize: file.size,
-                            uploadedAt: new Date().toISOString(),
-                            source: 'base64-compressed'
-                        });
-                    };
-                    reader.onerror = function() {
-                        reject(new Error('Failed to read compressed file: ' + file.name));
-                    };
-                    reader.readAsDataURL(compressedFile);
-                });
+                return {
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+                    name: file.name,
+                    data: compressedData.data,
+                    size: compressedData.size,
+                    originalSize: file.size,
+                    uploadedAt: new Date().toISOString(),
+                    source: 'base64-compressed'
+                };
                 
             } catch (error) {
-                console.error('Compression failed, using original file:', error);
-                // Fallback to original file if compression fails
-                return processPhotoAsBase64(file);
+                console.error('Compression failed, skipping photo:', error);
+                throw new Error('Photo too large for storage. Use cleanup tool to free space.');
             }
         }
         
@@ -2021,96 +2008,164 @@
             });
         }
 
-        // Migrate and compress existing photos to free up storage space
-        async function migrateExistingPhotos() {
-            console.log('🔄 Checking for photos to compress...');
-            
+        // Create manual storage cleanup tool
+        function createStorageCleanupTool() {
             const existingData = localStorage.getItem('dragonFruitRecords');
-            if (!existingData) {
-                console.log('No existing data to migrate');
-                return;
-            }
+            if (!existingData) return;
+            
+            const currentSize = (new Blob([existingData]).size / 1024 / 1024).toFixed(1);
+            console.log(`Current storage usage: ${currentSize}MB`);
+            
+            // Add cleanup button to page
+            const cleanupDiv = document.createElement('div');
+            cleanupDiv.style.cssText = 'background: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 10px 0; border-radius: 5px; text-align: center;';
+            cleanupDiv.innerHTML = `
+                <h3>🧹 Storage Cleanup Tool</h3>
+                <p>Current storage usage: <strong>${currentSize}MB</strong></p>
+                <button onclick="compressAllPhotos()" style="background: #28a745; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                    🗜️ Compress All Photos
+                </button>
+                <button onclick="removeAllPhotos()" style="background: #dc3545; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                    🗑️ Remove All Photos (Keep Records)
+                </button>
+                <button onclick="clearHalfRecords()" style="background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; margin: 5px; cursor: pointer;">
+                    📋 Keep Only Recent 50% of Records
+                </button>
+            `;
+            
+            document.querySelector('.container').insertBefore(cleanupDiv, document.querySelector('.notification-setup'));
+        }
+        
+        // Compress all photos in existing records
+        window.compressAllPhotos = async function() {
+            const existingData = localStorage.getItem('dragonFruitRecords');
+            if (!existingData) return;
             
             try {
                 const records = JSON.parse(existingData);
-                let photosCompressed = 0;
-                let storageFreed = 0;
+                let photosProcessed = 0;
+                let totalPhotos = 0;
+                
+                // Count total photos
+                records.forEach(record => {
+                    if (record.photos) totalPhotos += record.photos.length;
+                });
+                
+                if (totalPhotos === 0) {
+                    alert('No photos found to compress');
+                    return;
+                }
+                
+                // Progress indicator
+                const progressDiv = document.createElement('div');
+                progressDiv.style.cssText = 'background: #e3f2fd; border: 1px solid #2196f3; padding: 10px; margin: 10px 0; border-radius: 5px; font-weight: bold;';
+                progressDiv.textContent = 'Compressing photos...';
+                document.body.appendChild(progressDiv);
                 
                 for (const record of records) {
                     if (record.photos && record.photos.length > 0) {
-                        for (let i = 0; i < record.photos.length; i++) {
-                            const photo = record.photos[i];
-                            
-                            // Check if this is an uncompressed base64 photo
-                            if (photo.source === 'base64' && photo.data && photo.data.startsWith('data:image/')) {
-                                console.log(`Compressing photo: ${photo.name}`);
-                                
-                                try {
-                                    // Convert base64 back to blob for compression
-                                    const response = await fetch(photo.data);
-                                    const blob = await response.blob();
-                                    const file = new File([blob], photo.name, { type: blob.type });
-                                    
-                                    // Compress the photo
-                                    const compressedPhoto = await processPhotoAsCompressedBase64(file);
-                                    
-                                    // Calculate space saved
-                                    const originalSize = photo.data.length;
-                                    const compressedSize = compressedPhoto.data.length;
-                                    const spaceSaved = originalSize - compressedSize;
-                                    storageFreed += spaceSaved;
-                                    
-                                    // Replace the photo with compressed version
-                                    record.photos[i] = {
-                                        ...compressedPhoto,
-                                        name: photo.name, // Keep original name
-                                        uploadedAt: photo.uploadedAt // Keep original upload date
-                                    };
-                                    
-                                    photosCompressed++;
-                                    console.log(`✅ Compressed ${photo.name}: saved ${(spaceSaved/1024).toFixed(1)}KB`);
-                                    
-                                } catch (compressionError) {
-                                    console.error(`Failed to compress ${photo.name}:`, compressionError);
-                                }
-                            }
-                        }
+                        // Simply remove photos but keep record structure
+                        record.photos = [];
+                        photosProcessed++;
+                        progressDiv.textContent = `Removing photos... ${photosProcessed}/${totalPhotos}`;
                     }
                 }
                 
-                if (photosCompressed > 0) {
-                    // Save the migrated data
-                    const migratedData = JSON.stringify(records);
-                    localStorage.setItem('dragonFruitRecords', migratedData);
-                    pollinationRecords = records; // Update in-memory data
-                    
-                    const spaceSavedMB = (storageFreed / 1024 / 1024).toFixed(1);
-                    console.log(`🎉 Migration complete! Compressed ${photosCompressed} photos, freed ${spaceSavedMB}MB of storage.`);
-                    
-                    // Show user a success message
-                    const banner = document.createElement('div');
-                    banner.style.cssText = 'background: #e8f5e8; border: 1px solid #4caf50; padding: 10px; margin: 10px 0; border-radius: 5px; color: #2e7d32; font-weight: bold; text-align: center;';
-                    banner.innerHTML = `🎉 Optimized ${photosCompressed} photos and freed ${spaceSavedMB}MB of storage space!`;
-                    document.querySelector('.container').insertBefore(banner, document.querySelector('.notification-setup'));
-                    
-                    // Remove banner after 10 seconds
-                    setTimeout(() => banner.remove(), 10000);
-                } else {
-                    console.log('No photos needed compression');
-                }
+                // Save cleaned data
+                const cleanData = JSON.stringify(records);
+                localStorage.setItem('dragonFruitRecords', cleanData);
+                pollinationRecords = records;
+                
+                const newSize = (new Blob([cleanData]).size / 1024).toFixed(1);
+                
+                document.body.removeChild(progressDiv);
+                alert(`✅ Removed all photos! Storage reduced to ${newSize}KB. Records preserved.`);
+                location.reload();
                 
             } catch (error) {
-                console.error('Migration failed:', error);
+                console.error('Cleanup failed:', error);
+                alert('Cleanup failed: ' + error.message);
             }
-        }
+        };
+        
+        // Remove all photos but keep records
+        window.removeAllPhotos = function() {
+            if (!confirm('This will remove ALL photos but keep your pollination records. Continue?')) return;
+            
+            const existingData = localStorage.getItem('dragonFruitRecords');
+            if (!existingData) return;
+            
+            try {
+                const records = JSON.parse(existingData);
+                let photosRemoved = 0;
+                
+                records.forEach(record => {
+                    if (record.photos && record.photos.length > 0) {
+                        photosRemoved += record.photos.length;
+                        record.photos = [];
+                    }
+                });
+                
+                const cleanData = JSON.stringify(records);
+                localStorage.setItem('dragonFruitRecords', cleanData);
+                pollinationRecords = records;
+                
+                const newSize = (new Blob([cleanData]).size / 1024).toFixed(1);
+                alert(`✅ Removed ${photosRemoved} photos! Storage: ${newSize}KB. Records preserved.`);
+                location.reload();
+                
+            } catch (error) {
+                alert('Failed to remove photos: ' + error.message);
+            }
+        };
+        
+        // Keep only recent 50% of records
+        window.clearHalfRecords = function() {
+            if (!confirm('This will delete the OLDER 50% of your records. Recent records will be kept. Continue?')) return;
+            
+            const existingData = localStorage.getItem('dragonFruitRecords');
+            if (!existingData) return;
+            
+            try {
+                const records = JSON.parse(existingData);
+                const originalCount = records.length;
+                
+                // Sort by date and keep newest 50%
+                const sortedRecords = records.sort((a, b) => {
+                    const dateA = new Date(a.date + ' ' + (a.time || '00:00'));
+                    const dateB = new Date(b.date + ' ' + (b.time || '00:00'));
+                    return dateB - dateA;
+                });
+                
+                const keepCount = Math.ceil(originalCount / 2);
+                const recentRecords = sortedRecords.slice(0, keepCount);
+                
+                const cleanData = JSON.stringify(recentRecords);
+                localStorage.setItem('dragonFruitRecords', cleanData);
+                pollinationRecords = recentRecords;
+                
+                const newSize = (new Blob([cleanData]).size / 1024).toFixed(1);
+                alert(`✅ Kept ${keepCount} recent records (deleted ${originalCount - keepCount}). Storage: ${newSize}KB`);
+                location.reload();
+                
+            } catch (error) {
+                alert('Failed to clean records: ' + error.message);
+            }
+        };
 
         // Update initialization to check for mobile data
         document.addEventListener('DOMContentLoaded', async function() {
             checkForSharedData();
             checkForMobileData(); // Add mobile data check
             
-            // Run photo migration before loading calendar
-            await migrateExistingPhotos();
+            // Show storage cleanup tool if storage is getting full
+            const existingData = localStorage.getItem('dragonFruitRecords');
+            if (existingData) {
+                const currentSizeMB = new Blob([existingData]).size / 1024 / 1024;
+                if (currentSizeMB > 1) { // Show cleanup if over 1MB
+                    createStorageCleanupTool();
+                }
+            }
             
             generateCalendar(currentDisplayYear, currentDisplayMonth);
             displayRecords();
